@@ -1,0 +1,29 @@
+
+# docker-compose.dev.yml
+# 开发环境配置
+version: '3.8'
+
+services:
+  fantasy-novel-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - LLM__API_BASE=${LLM_API_BASE:-http://localhost:8000/v1}
+      - LLM__API_KEY=${LLM_API_KEY:-your-api-key}
+      - LLM__MODEL_NAME=${LLM_MODEL_NAME:-qwen2.5-72b-instruct}
+      - DATABASE__URL=sqlite:///app/data/fantasy_novel.db
+      - MCP__DEBUG=true
+      - MCP__LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - fantasy-novel-dev
+
+networks:
+  fantasy-novel-dev:
+    driver: bridge

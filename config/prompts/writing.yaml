@@ -1,0 +1,191 @@
+
+# config/prompts/writing.yaml
+# 写作生成提示词模板
+
+scene_planning: |
+  为第{{ chapter_number }}章规划场景结构：
+
+  章节概要：{{ chapter_summary }}
+  关键事件：{{ key_events }}
+  目标字数：{{ target_word_count }}
+  故事背景：{{ story_context }}
+
+  请规划3-4个场景，每个场景包含：
+  1. 场景标题和主要目的
+  2. 参与角色和地点
+  3. 预期字数分配
+  4. 情绪基调和节奏
+  5. 与整章的关系
+
+  要求：
+  - 场景要有明确目的
+  - 情节要自然流畅
+  - 节奏要有变化
+
+scene_writing: |
+  请写作一个{{ scene_purpose }}场景：
+
+  参与角色：{{ characters }}
+  场景地点：{{ location }}
+  情绪氛围：{{ mood }}
+  目标字数：{{ target_word_count }}
+  写作风格：{{ writing_style }}
+  故事背景：{{ story_context }}
+
+  写作要求：
+  1. 生动的场景描述
+  2. 符合角色性格的对话
+  3. 适当的动作和细节
+  4. 推进情节发展
+  5. 体现人物关系
+
+  风格要求：
+  - 语言：{{ writing_style.vocabulary }}
+  - 句式：{{ writing_style.sentence_length }}
+  - 描述密度：{{ writing_style.description_density }}
+  - 基调：{{ writing_style.tone }}
+
+action_scene: |
+  写作一个{{ conflict_type }}的动作场景：
+
+  参与者：{{ participants }}
+  战斗地点：{{ location }}
+  冲突起因：{{ stakes }}
+  目标字数：{{ word_count }}
+
+  场景要求：
+  1. 紧张刺激的战斗描写
+  2. 清晰的动作序列
+  3. 角色的战斗风格体现
+  4. 环境对战斗的影响
+  5. 战斗结果和后果
+
+  写作技巧：
+  - 使用短句增强节奏感
+  - 多用动作动词
+  - 描述要有画面感
+  - 体现实力差距
+
+dialogue_scene: |
+  写作角色对话场景：
+
+  对话角色：{{ characters }}
+  对话主题：{{ topic }}
+  角色关系：{{ relationships }}
+  情绪基调：{{ emotion }}
+  目标字数：{{ word_count }}
+
+  对话要求：
+  1. 符合各角色的语言特色
+  2. 推进情节或深化角色
+  3. 有潜台词和言外之意
+  4. 自然流畅的对话节奏
+  5. 适当的动作和表情描写
+
+  注意事项：
+  - 避免信息堆砌
+  - 保持对话的真实感
+  - 体现角色关系变化
+
+description_scene: |
+  写作{{ subject }}的描述场景：
+
+  描述重点：{{ focus_areas }}
+  感官强调：{{ sensory_type }}
+  情绪氛围：{{ mood }}
+  目标字数：{{ word_count }}
+
+  描写要求：
+  1. 运用多种感官细节
+  2. 营造指定的氛围
+  3. 使用恰当的修辞手法
+  4. 层次分明的描述结构
+  5. 与故事情节相关联
+
+  技巧提示：
+  - 视觉描写要有层次
+  - 适当使用比喻和象征
+  - 描述要服务于情节需要
+
+character_description: |
+  为角色{{ character }}写作外貌描述：
+
+  描述重点：{{ aspects }}
+  描写视角：{{ perspective }}
+  情绪氛围：{{ mood }}
+  目标字数：{{ word_count }}
+
+  描写要求：
+  1. 突出角色的特色和魅力
+  2. 体现角色的性格特征
+  3. 符合故事的时代背景
+  4. 给读者留下深刻印象
+  5. 避免过于详细的罗列
+
+  注意点：
+  - 选择最有特色的特征描写
+  - 将外貌与性格联系
+  - 使用富有感染力的词汇
+
+environment_description: |
+  描写{{ location }}环境：
+
+  时间：{{ time }}
+  天气：{{ weather }}
+  氛围：{{ atmosphere }}
+  感官重点：{{ sensory }}
+  目标字数：{{ word_count }}
+
+  描写要素：
+  1. 整体环境概况
+  2. 重要的视觉元素
+  3. 声音和气味
+  4. 光线和色彩
+  5. 空间感和距离感
+  6. 环境对角色的影响
+
+  技巧要求：
+  - 先整体后细节
+  - 突出环境特色
+  - 营造沉浸感
+
+monologue: |
+  为角色{{ character }}写作内心独白：
+
+  心理状态：{{ internal_state }}
+  触发事件：{{ trigger }}
+  角色特质：{{ character_traits }}
+  目标字数：{{ word_count }}
+
+  独白要求：
+  1. 真实反映角色内心
+  2. 符合角色的思维方式
+  3. 体现角色的情感变化
+  4. 推进角色发展
+  5. 自然不做作的表达
+
+  注意事项：
+  - 避免过于理性的分析
+  - 体现情感的波动
+  - 保持角色声音的一致性
+
+exposition_dialogue: |
+  通过对话自然地传达信息：
+
+  需要传达的信息：{{ information }}
+  说话者：{{ speaker }}
+  倾听者：{{ listener }}
+  双方关系：{{ relationship }}
+  对话背景：{{ context }}
+
+  要求：
+  1. 信息传达要自然不突兀
+  2. 符合角色的说话方式
+  3. 考虑倾听者的反应
+  4. 避免明显的说明文
+  5. 保持对话的趣味性
+
+  技巧：
+  - 分散信息传达
+  - 通过冲突增加张力
+  - 让角色有所保留
