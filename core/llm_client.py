@@ -258,6 +258,7 @@ class LLMService:
         # 生成响应
         response = await self.client.chat_completion(messages, **kwargs)
 
+        # logger.info(f">>生成基础世界设定 response: {response}")
         # 保存对话历史
         if session_id:
             self.conversation_manager.add_message(session_id, user_message)

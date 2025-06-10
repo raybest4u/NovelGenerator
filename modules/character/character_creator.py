@@ -1,4 +1,3 @@
-
 # modules/character/character_creator.py
 """
 角色创建器
@@ -12,6 +11,9 @@ from core.base_tools import AsyncTool, ToolDefinition, ToolParameter
 from core.llm_client import get_llm_service
 from config.settings import get_prompt_manager
 import random
+import json
+import re
+from loguru import logger
 
 
 class CharacterType(Enum):
@@ -139,19 +141,19 @@ class CharacterCreator:
 
         # 生成基础信息
         basic_info = await self._generate_basic_info(character_type, genre, requirements)
-
+        logger.info(f"生成基础信息-->{basic_info}")
         # 生成外貌
         appearance = await self._generate_appearance(basic_info, world_setting)
-
+        logger.info(f"生成外貌-->{appearance}")
         # 生成性格
         personality = await self._generate_personality(basic_info, character_type)
-
+        logger.info(f"生成性格-->{personality}")
         # 生成背景
         background = await self._generate_background(basic_info, world_setting)
-
+        logger.info(f"生成背景-->{background}")
         # 生成能力
         abilities = await self._generate_abilities(basic_info, genre, world_setting)
-
+        logger.info(f"生成能力-->{abilities}")
         # 组装角色
         character = Character(
             id=f"char_{random.randint(1000, 9999)}",
@@ -194,123 +196,254 @@ class CharacterCreator:
         return characters
 
     async def _generate_basic_info(self, character_type: str, genre: str,
-                                 requirements: Optional[Dict] = None) -> Dict[str, Any]:
+                                   requirements: Optional[Dict] = None) -> Dict[str, Any]:
         """生成基础信息"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "character",
-            "basic_info",
-            character_type=character_type,
-            genre=genre,
-            requirements=requirements or {}
-        )
+        prompt = f"""
+        为{genre}小说创建一个{character_type}角色的基本信息。
+
+        特殊要求：{requirements or '无'}
+
+        请以JSON格式返回以下信息：
+        {{
+            "name": "角色姓名",
+            "nickname": "绰号（可为空）",
+            "story_role": "在故事中的作用",
+            "character_arc": "角色发展弧线描述"
+        }}
+
+        要求：
+        1. 姓名要符合{genre}小说的风格
+        2. 符合{character_type}的特征
+        3. 为后续发展留下空间
+        """
 
         response = await self.llm_service.generate_text(prompt)
+        parsed_info = await self._parse_json_response(response.content)
 
-        # 解析响应
-        return {
-            "name": self._extract_name_from_response(response.content),
-            "nickname": self._extract_nickname_from_response(response.content),
-            "importance": self._calculate_importance(character_type),
-            "story_role": self._extract_story_role(response.content),
-            "character_arc": self._extract_character_arc(response.content)
-        }
+        # 添加重要性评分
+        parsed_info["importance"] = self._calculate_importance(character_type)
 
-    async def _generate_appearance(self, basic_info: Dict, world_setting: Optional[Dict]) -> CharacterAppearance:
+        return parsed_info
+
+    async def _generate_appearance(self, basic_info: Dict,
+                                   world_setting: Optional[Dict]) -> CharacterAppearance:
         """生成外貌"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "character",
-            "appearance",
-            name=basic_info["name"],
-            world_setting=world_setting or {}
-        )
+        prompt = f"""
+        为角色{basic_info["name"]}设计外貌特征。
+
+        世界设定：{world_setting or '标准玄幻世界'}
+
+        请以JSON格式返回：
+        {{
+            "gender": "性别",
+            "age": 年龄数字,
+            "height": "身高描述",
+            "build": "体型描述",
+            "hair_color": "发色",
+            "eye_color": "眼色",
+            "skin_tone": "肤色",
+            "distinctive_features": ["特征1", "特征2"],
+            "clothing_style": "穿衣风格",
+            "accessories": ["配饰1", "配饰2"]
+        }}
+
+        要求：
+        - 外貌要与角色身份相符
+        - 便于读者记忆
+        - 体现角色特色
+        """
 
         response = await self.llm_service.generate_text(prompt)
+        appearance_data = await self._parse_json_response(response.content)
 
-        return CharacterAppearance(
-            gender=self._extract_gender(response.content),
-            age=self._extract_age(response.content),
-            height=self._extract_height(response.content),
-            build=self._extract_build(response.content),
-            hair_color=self._extract_hair_color(response.content),
-            eye_color=self._extract_eye_color(response.content),
-            skin_tone=self._extract_skin_tone(response.content),
-            distinctive_features=self._extract_features(response.content),
-            clothing_style=self._extract_clothing(response.content),
-            accessories=self._extract_accessories(response.content)
-        )
+        return CharacterAppearance(**appearance_data)
 
-    async def _generate_personality(self, basic_info: Dict, character_type: str) -> CharacterPersonality:
+    async def _generate_personality(self, basic_info: Dict,
+                                    character_type: str) -> CharacterPersonality:
         """生成性格"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "character",
-            "personality",
-            name=basic_info["name"],
-            character_type=character_type
-        )
+        prompt = f"""
+        为角色{basic_info["name"]}（{character_type}）设计性格特征。
+
+        请以JSON格式返回：
+        {{
+            "core_traits": ["核心特质1", "核心特质2", "核心特质3"],
+            "strengths": ["优点1", "优点2"],
+            "weaknesses": ["缺点1", "缺点2"],
+            "fears": ["恐惧1", "恐惧2"],
+            "desires": ["欲望1", "欲望2"],
+            "habits": ["习惯1", "习惯2"],
+            "speech_pattern": "说话方式描述",
+            "moral_alignment": "道德取向"
+        }}
+
+        要求：
+        - 性格要有层次感
+        - 优缺点要平衡
+        - 符合{character_type}的定位
+        """
 
         response = await self.llm_service.generate_text(prompt)
+        personality_data = await self._parse_json_response(response.content)
 
-        return CharacterPersonality(
-            core_traits=["勇敢", "坚韧"],
-            strengths=["意志坚强", "正义感"],
-            weaknesses=["过于冲动", "容易信任他人"],
-            fears=["失去亲人", "力量不足"],
-            desires=["变强", "保护重要的人"],
-            habits=["晨练", "独自思考"],
-            speech_pattern="直接坦率",
-            moral_alignment="守序善良"
-        )
+        return CharacterPersonality(**personality_data)
 
-    async def _generate_background(self, basic_info: Dict, world_setting: Optional[Dict]) -> CharacterBackground:
+    async def _generate_background(self, basic_info: Dict,
+                                   world_setting: Optional[Dict]) -> CharacterBackground:
         """生成背景"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "character",
-            "background",
-            name=basic_info["name"],
-            world_setting=world_setting or {}
-        )
+        prompt = f"""
+        为角色{basic_info["name"]}创建详细背景。
+
+        世界设定：{world_setting or '标准玄幻世界'}
+
+        请以JSON格式返回：
+        {{
+            "birthplace": "出生地",
+            "family": {{"父亲": "描述", "母亲": "描述"}},
+            "childhood": "童年经历描述",
+            "education": ["教育1", "教育2"],
+            "major_events": [{{"事件": "描述", "影响": "对角色的影响"}}],
+            "relationships": [{{"关系": "师父", "描述": "关系描述"}}],
+            "secrets": ["秘密1", "秘密2"],
+            "goals": ["目标1", "目标2"]
+        }}
+
+        要求：
+        - 背景要与世界观一致
+        - 为角色行为提供动机
+        """
 
         response = await self.llm_service.generate_text(prompt)
+        background_data = await self._parse_json_response(response.content)
 
-        return CharacterBackground(
-            birthplace="小山村",
-            family={"父亲": "村民", "母亲": "村民"},
-            childhood="普通的村庄生活",
-            education=["私塾", "武馆"],
-            major_events=[{"事件": "家族遭难", "影响": "踏上修仙路"}],
-            relationships=[{"关系": "师父", "描述": "引路人"}],
-            secrets=["身世之谜"],
-            goals=["复仇", "变强", "保护家园"]
-        )
+        return CharacterBackground(**background_data)
 
     async def _generate_abilities(self, basic_info: Dict, genre: str,
-                                world_setting: Optional[Dict]) -> CharacterAbilities:
+                                  world_setting: Optional[Dict]) -> CharacterAbilities:
         """生成能力"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "character",
-            "abilities",
-            name=basic_info["name"],
-            genre=genre,
-            world_setting=world_setting or {}
-        )
+        prompt = f"""
+        为角色{basic_info["name"]}设计能力体系。
+
+        小说类型：{genre}
+        世界设定：{world_setting or '标准玄幻世界'}
+
+        请以JSON格式返回：
+        {{
+            "power_level": "实力等级",
+            "cultivation_method": "修炼功法",
+            "special_abilities": [{{"名称": "能力名", "描述": "能力描述"}}],
+            "combat_skills": ["战斗技能1", "战斗技能2"],
+            "non_combat_skills": ["非战斗技能1", "非战斗技能2"],
+            "artifacts": [{{"名称": "法宝名", "品级": "品级", "描述": "描述"}}],
+            "spiritual_root": "灵根属性",
+            "talent_level": "天赋等级"
+        }}
+
+        要求：
+        - 符合世界的力量体系
+        - 实力与角色设定匹配
+        - 留有成长空间
+        """
 
         response = await self.llm_service.generate_text(prompt)
+        abilities_data = await self._parse_json_response(response.content)
 
-        return CharacterAbilities(
-            power_level="炼气期",
-            cultivation_method="基础功法",
-            special_abilities=[{"名称": "灵力感知", "描述": "感知周围灵力"}],
-            combat_skills=["剑法", "身法"],
-            non_combat_skills=["炼丹", "阵法"],
-            artifacts=[{"名称": "飞剑", "品级": "法器"}],
-            spiritual_root="金属性",
-            talent_level="中等"
-        )
+        return CharacterAbilities(**abilities_data)
+
+    async def _parse_json_response(self, response: str) -> Dict[str, Any]:
+        """解析JSON响应"""
+        try:
+            # 尝试直接解析JSON
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
+
+            if json_start != -1 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                return json.loads(json_str)
+            else:
+                # 如果找不到JSON，使用LLM重新结构化
+                return await self._structure_response_with_llm(response)
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON解析失败: {e}，尝试用LLM重新结构化")
+            return await self._structure_response_with_llm(response)
+
+    async def _structure_response_with_llm(self, response: str) -> Dict[str, Any]:
+        """使用LLM重新结构化响应"""
+
+        structure_prompt = f"""
+        请将以下文本转换为标准JSON格式：
+
+        原文：
+        {response}
+
+        请返回有效的JSON格式，只返回JSON，不要其他解释。
+        """
+
+        structure_response = await self.llm_service.generate_text(structure_prompt)
+
+        try:
+            json_start = structure_response.content.find("{")
+            json_end = structure_response.content.rfind("}") + 1
+
+            if json_start != -1 and json_end > json_start:
+                json_str = structure_response.content[json_start:json_end]
+                return json.loads(json_str)
+            else:
+                # 如果还是失败，返回默认值
+                logger.error("LLM结构化也失败，使用默认值")
+                return self._get_default_values()
+
+        except json.JSONDecodeError:
+            logger.error("LLM结构化解析失败，使用默认值")
+            return self._get_default_values()
+
+    def _get_default_values(self) -> Dict[str, Any]:
+        """获取默认值"""
+        return {
+            "name": f"角色{random.randint(1, 999)}",
+            "nickname": "暂无",
+            "story_role": "推动情节发展",
+            "character_arc": "从弱小到强大",
+            "gender": "男",
+            "age": 18,
+            "height": "中等",
+            "build": "匀称",
+            "hair_color": "黑色",
+            "eye_color": "黑色",
+            "skin_tone": "正常",
+            "distinctive_features": ["气质不凡"],
+            "clothing_style": "简朴",
+            "accessories": ["随身佩剑"],
+            "core_traits": ["坚韧", "正义"],
+            "strengths": ["意志坚强"],
+            "weaknesses": ["过于冲动"],
+            "fears": ["失去亲人"],
+            "desires": ["变强"],
+            "habits": ["勤奋修炼"],
+            "speech_pattern": "直接",
+            "moral_alignment": "善良",
+            "birthplace": "小山村",
+            "family": {"父亲": "普通村民", "母亲": "普通村民"},
+            "childhood": "平凡的村庄生活",
+            "education": ["私塾"],
+            "major_events": [{"事件": "踏上修仙路", "影响": "改变人生"}],
+            "relationships": [{"关系": "师父", "描述": "引路人"}],
+            "secrets": ["身世之谜"],
+            "goals": ["变强", "保护家人"],
+            "power_level": "炼气期",
+            "cultivation_method": "基础功法",
+            "special_abilities": [{"名称": "灵力感知", "描述": "感知周围灵力"}],
+            "combat_skills": ["剑法"],
+            "non_combat_skills": ["炼丹"],
+            "artifacts": [{"名称": "飞剑", "品级": "法器", "描述": "普通飞剑"}],
+            "spiritual_root": "金属性",
+            "talent_level": "中等"
+        }
 
     def _load_character_templates(self) -> Dict[str, Dict]:
         """加载角色模板"""
@@ -329,16 +462,6 @@ class CharacterCreator:
             }
         }
 
-    # 辅助方法
-    def _extract_name_from_response(self, response: str) -> str:
-        """从响应中提取姓名"""
-        # 简单实现，实际可以用正则或NLP
-        return "李逍遥"
-
-    def _extract_nickname_from_response(self, response: str) -> Optional[str]:
-        """提取绰号"""
-        return "剑仙"
-
     def _calculate_importance(self, character_type: str) -> int:
         """计算重要性"""
         importance_map = {
@@ -352,54 +475,6 @@ class CharacterCreator:
             "背景角色": 2
         }
         return importance_map.get(character_type, 5)
-
-    def _extract_story_role(self, response: str) -> str:
-        """提取故事作用"""
-        return "推动情节发展"
-
-    def _extract_character_arc(self, response: str) -> str:
-        """提取角色弧线"""
-        return "从弱小到强大"
-
-    def _extract_gender(self, response: str) -> str:
-        """提取性别"""
-        return "男"
-
-    def _extract_age(self, response: str) -> int:
-        """提取年龄"""
-        return 18
-
-    def _extract_height(self, response: str) -> str:
-        """提取身高"""
-        return "中等"
-
-    def _extract_build(self, response: str) -> str:
-        """提取体型"""
-        return "匀称"
-
-    def _extract_hair_color(self, response: str) -> str:
-        """提取发色"""
-        return "黑色"
-
-    def _extract_eye_color(self, response: str) -> str:
-        """提取眼色"""
-        return "黑色"
-
-    def _extract_skin_tone(self, response: str) -> str:
-        """提取肤色"""
-        return "正常"
-
-    def _extract_features(self, response: str) -> List[str]:
-        """提取特征"""
-        return ["剑眉星目", "气质不凡"]
-
-    def _extract_clothing(self, response: str) -> str:
-        """提取穿衣风格"""
-        return "青衫布衣"
-
-    def _extract_accessories(self, response: str) -> List[str]:
-        """提取配饰"""
-        return ["玉佩", "长剑"]
 
 
 class CharacterCreatorTool(AsyncTool):
@@ -464,7 +539,7 @@ class CharacterCreatorTool(AsyncTool):
         )
 
     async def execute(self, parameters: Dict[str, Any],
-                     context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """执行角色创建"""
 
         character_type = parameters.get("character_type", "主角")
@@ -496,4 +571,3 @@ class CharacterCreatorTool(AsyncTool):
                     "genre": genre
                 }
             }
-

@@ -372,7 +372,7 @@ async def main():
     subparsers.add_parser("config", help="验证配置")
 
     args = parser.parse_args()
-    args.command = 'generate'
+    args.command = 'characters'
     logger.info(f"--->{args.command}")
     if not args.command:
         parser.print_help()
@@ -409,6 +409,7 @@ async def main():
             print(json.dumps(result, ensure_ascii=False, indent=2))
 
         elif args.command == "characters":
+            args = char_parser.parse_args()
             result = await generator.generate_characters_only(args.count, args.genre)
             print(json.dumps(result, ensure_ascii=False, indent=2))
 
