@@ -1,7 +1,8 @@
 # modules/generation/enhanced_story_generator.py
 """
-增强版故事生成器
+增强版故事生成器 - 集成配置管理版本
 整合多样性增强功能，确保每次生成都有显著差异
+与config_manager集成，使用全局配置
 """
 
 import random
@@ -16,6 +17,7 @@ from loguru import logger
 from core.base_tools import AsyncTool, ToolDefinition, ToolParameter, method_cache
 from core.llm_client import get_llm_service
 from config.settings import get_prompt_manager
+from config.config_manager import get_novel_config, get_enhanced_config  # 新增：获取全局配置
 from modules.character import CharacterCreator, CharacterCreatorTool
 from modules.generation.diversity_enhancer import DiversityEnhancer, GenerationVariant
 
@@ -29,6 +31,11 @@ class EnhancedStoryConfig:
     innovation_factors: List[str]  # 创新因子
     constraint_adherence: float  # 约束遵循度 0-1
 
+    # 新增：从全局配置继承的字段
+    word_count_per_chapter: int = 2000  # 每章字数
+    enable_plot_twists: bool = True  # 启用情节转折
+    narrative_complexity: str = "medium"  # 叙述复杂度
+
 
 class EnhancedStoryGenerator:
     """增强版故事生成器"""
@@ -37,6 +44,10 @@ class EnhancedStoryGenerator:
         self.llm_service = get_llm_service()
         self.prompt_manager = get_prompt_manager()
         self.diversity_enhancer = DiversityEnhancer()
+
+        # 获取全局配置
+        self.novel_config = get_novel_config()
+        self.enhanced_config = get_enhanced_config()
 
         # 创新技法库
         self.narrative_techniques = self._load_narrative_techniques()
@@ -69,354 +80,276 @@ class EnhancedStoryGenerator:
             },
             "多重视角": {
                 "description": "从不同角色的视角讲述同一个故事",
-                "implementation": ["角色轮换", "观点冲突", "信息互补", "真相拼图"],
-                "effect": "丰富故事层次和人物塑造"
+                "implementation": ["角色轮换", "观点冲突", "信息互补"],
+                "effect": "丰富故事层次"
             },
             "元叙事": {
-                "description": "故事中的故事，突破第四面墙",
-                "implementation": ["书中书", "戏中戏", "角色自省", "作者介入"],
-                "effect": "增加故事的哲学深度"
+                "description": "故事中的故事，自我指涉的叙述结构",
+                "implementation": ["书中书", "戏中戏", "梦境嵌套", "虚实交错"],
+                "effect": "增加哲学深度"
             },
             "意识流": {
-                "description": "直接展现角色的内心世界和思维过程",
-                "implementation": ["内心独白", "联想跳跃", "感觉描写", "潜意识表达"],
-                "effect": "深入人物内心，增强共鸣"
+                "description": "直接展现角色的内心活动和思维过程",
+                "implementation": ["内心独白", "联想跳跃", "时空交错", "感官融合"],
+                "effect": "深入心理描写"
             },
             "寓言化": {
-                "description": "用象征和隐喻表达深层主题",
-                "implementation": ["象征符号", "隐喻结构", "寓意情节", "哲理对话"],
-                "effect": "提升作品的思想高度"
+                "description": "通过象征和隐喻表达深层含义",
+                "implementation": ["象征物", "隐喻场景", "寓言情节", "哲理对话"],
+                "effect": "提升思想内涵"
             }
         }
 
-    def _load_character_innovations(self) -> Dict[str, List[str]]:
-        """加载角色创新要素"""
+    def _load_character_innovations(self) -> Dict[str, Dict[str, Any]]:
+        """加载角色创新设定"""
         return {
-            "身份设定": [
-                "双重人格", "失忆者", "预言者", "时间旅行者",
-                "灵魂互换", "虚拟存在", "概念化身", "命运编织者"
-            ],
-            "能力体系": [
-                "情感操控", "概率改写", "记忆编辑", "时间暂停",
-                "维度穿越", "因果逆转", "真实扭曲", "意识分离"
-            ],
-            "成长轨迹": [
-                "逆向成长", "循环重置", "分身发展", "融合进化",
-                "维度提升", "概念超越", "存在升华", "意识觉醒"
-            ],
-            "关系动态": [
-                "敌友转换", "师徒颠倒", "时空错位", "身份互换",
-                "记忆共享", "命运绑定", "灵魂共鸣", "意识融合"
-            ]
+            "双重人格": {
+                "description": "角色具有两种截然不同的人格",
+                "variations": ["善恶对立", "理性感性", "过去现在"],
+                "narrative_impact": "内心冲突戏剧化"
+            },
+            "时间旅行者": {
+                "description": "来自不同时代的角色",
+                "variations": ["未来预知", "历史重现", "时空错位"],
+                "narrative_impact": "时间悖论和因果关系"
+            },
+            "情感操控": {
+                "description": "能够感知或操控他人情感",
+                "variations": ["共情能力", "情绪传染", "心理暗示"],
+                "narrative_impact": "人际关系复杂化"
+            },
+            "逆向成长": {
+                "description": "角色经历与常规相反的发展轨迹",
+                "variations": ["强变弱", "智变愚", "善变恶"],
+                "narrative_impact": "颠覆传统成长模式"
+            }
         }
 
     def _load_plot_twists(self) -> Dict[str, Dict[str, Any]]:
-        """加载情节转折"""
+        """加载情节转折技巧"""
         return {
             "身份揭秘": {
-                "types": ["真实身份", "隐藏关系", "伪装暴露", "血缘之谜"],
-                "timing": ["开篇", "中段", "高潮", "结尾"],
-                "impact": ["震惊", "恍然", "愤怒", "感动"]
+                "types": ["真实身份", "隐藏关系", "双重间谍"],
+                "timing": ["中期转折", "高潮前", "结尾反转"],
+                "impact": ["重新定义角色", "改变阵营", "颠覆认知"]
             },
             "真相反转": {
-                "types": ["善恶颠倒", "动机误判", "事实错觉", "记忆造假"],
-                "timing": ["铺垫后", "冲突中", "揭示时", "回顾时"],
-                "impact": ["困惑", "醒悟", "重新审视", "价值重塑"]
+                "types": ["假象真相", "局中局", "记忆错误"],
+                "timing": ["逐步揭示", "突然爆发", "最后一刻"],
+                "impact": ["质疑一切", "重新解读", "价值观冲击"]
             },
             "时空扭曲": {
-                "types": ["时间循环", "平行世界", "梦境现实", "虚拟真实"],
-                "timing": ["关键节点", "转折处", "高潮时", "收尾前"],
-                "impact": ["颠覆认知", "重新定位", "存在质疑", "哲学思考"]
+                "types": ["时间循环", "平行世界", "因果倒置"],
+                "timing": ["开篇设定", "中期揭示", "结局解释"],
+                "impact": ["现实感模糊", "逻辑重构", "哲学思考"]
             },
             "能力觉醒": {
-                "types": ["潜能爆发", "血脉觉醒", "器物认主", "天赋显现"],
-                "timing": ["绝境时", "感悟后", "传承中", "突破后"],
-                "impact": ["力量提升", "自信增强", "责任加重", "使命明确"]
+                "types": ["隐藏天赋", "血脉觉醒", "器物共鸣"],
+                "timing": ["危机时刻", "情感激发", "特殊环境"],
+                "impact": ["力量平衡改变", "自我认知更新", "责任感升级"]
             }
         }
 
-    def _load_world_innovations(self) -> Dict[str, List[str]]:
-        """加载世界构建创新"""
+    def _load_world_innovations(self) -> Dict[str, Dict[str, Any]]:
+        """加载世界创新设定"""
         return {
-            "物理法则": [
-                "重力可控", "时间流速不同", "空间折叠", "维度重叠",
-                "意识物质化", "情感能量", "记忆具象", "梦境现实"
-            ],
-            "社会结构": [
-                "记忆等级制", "情感货币", "思想共享", "意识民主",
-                "能力分工", "时间分配", "空间所有权", "虚拟身份"
-            ],
-            "文明形态": [
-                "思维文明", "能量文明", "信息文明", "维度文明",
-                "概念文明", "意识文明", "时间文明", "因果文明"
-            ],
-            "冲突机制": [
-                "思想战争", "记忆争夺", "时间竞赛", "维度侵袭",
-                "概念污染", "意识病毒", "因果破坏", "现实扭曲"
-            ]
+            "重力可控": {
+                "description": "重力成为可操控的力量",
+                "applications": ["建筑悬浮", "战斗技巧", "交通革命"],
+                "conflicts": ["重力垄断", "失重灾难", "引力武器"]
+            },
+            "思想战争": {
+                "description": "思想和观念的直接对抗",
+                "applications": ["概念武器", "信念护盾", "记忆战场"],
+                "conflicts": ["认知侵略", "思维病毒", "意识形态战"]
+            },
+            "记忆货币": {
+                "description": "记忆成为交易媒介",
+                "applications": ["经验买卖", "技能传承", "情感交易"],
+                "conflicts": ["记忆贫富差距", "身份失真", "历史篡改"]
+            },
+            "维度文明": {
+                "description": "不同维度的文明交汇",
+                "applications": ["维度旅行", "跨次元贸易", "多重现实"],
+                "conflicts": ["维度战争", "现实污染", "存在危机"]
+            }
         }
 
     async def generate_enhanced_story_config(
         self,
         base_theme: str,
-        randomization_level: float = 0.8,
-        avoid_recent: bool = True
+        randomization_level: float = None,
+        avoid_recent: bool = None
     ) -> EnhancedStoryConfig:
-        """生成增强的故事配置"""
+        """生成增强故事配置 - 集成全局配置版本"""
 
-        # 获取避免约束
-        constraints = None
-        if avoid_recent:
-            constraints = self.diversity_enhancer.get_avoidance_constraints(recent_count=5)
+        # 从全局配置获取默认值（方案3：配置继承机制）
+        if randomization_level is None:
+            randomization_level = self.enhanced_config.default_randomization_level
 
-        # 生成多样性变体
-        variant = await self.diversity_enhancer.generate_diverse_variant(base_theme, constraints)
+        if avoid_recent is None:
+            avoid_recent = self.enhanced_config.avoid_recent_elements
 
-        # 选择创新因子
-        innovation_factors = self._select_innovation_factors(randomization_level)
+        # 检查多样性开关
+        if not self.enhanced_config.enable_diversity:
+            randomization_level = 0.0
+            avoid_recent = False
+            logger.info("多样性增强已通过配置禁用")
+
+        # 限制主题选择
+        if base_theme in self.enhanced_config.forbidden_themes:
+            logger.warning(f"主题 '{base_theme}' 在配置中被禁用，使用默认主题")
+            base_theme = self.enhanced_config.preferred_themes[
+                0] if self.enhanced_config.preferred_themes else "修仙"
+
+        # 应用主题偏好
+        if (self.enhanced_config.preferred_themes and
+            base_theme not in self.enhanced_config.preferred_themes and
+            randomization_level > 0.5):
+            # 高随机化时可能调整到偏好主题
+            if random.random() < 0.3:
+                base_theme = random.choice(self.enhanced_config.preferred_themes)
+                logger.info(f"根据配置偏好调整主题为: {base_theme}")
+
+        # 生成多样性变体（考虑配置偏好）
+        variant = await self.diversity_enhancer.generate_story_variant(
+            base_theme,
+            randomization_level,
+            constraints={
+                "preferred_structures": self.enhanced_config.preferred_story_structures,
+                "preferred_archetypes": self.enhanced_config.preferred_character_archetypes,
+                "preferred_flavors": self.enhanced_config.preferred_world_flavors,
+                "avoid_recent": avoid_recent
+            }
+        )
+
+        # 选择创新因子（考虑配置）
+        available_factors = self.enhanced_config.default_innovation_factors.copy()
+
+        # 根据创新强度调整因子数量
+        intensity_map = {"low": 1, "medium": 2, "high": 3}
+        factor_count = intensity_map.get(self.enhanced_config.innovation_intensity, 2)
+        factor_count = min(factor_count + int(randomization_level * 2), len(available_factors))
+
+        innovation_factors = random.sample(available_factors, factor_count)
 
         return EnhancedStoryConfig(
             base_theme=base_theme,
             variant=variant,
             randomization_level=randomization_level,
             innovation_factors=innovation_factors,
-            constraint_adherence=0.7 + randomization_level * 0.3
+            constraint_adherence=self.enhanced_config.constraint_adherence,
+            # 从全局配置继承
+            word_count_per_chapter=self.novel_config.default_word_count,
+            enable_plot_twists=self.enhanced_config.enable_plot_twists,
+            narrative_complexity=self.enhanced_config.narrative_complexity
         )
 
-    def _select_innovation_factors(self, randomization_level: float) -> List[str]:
-        """选择创新因子"""
-        base_count = int(2 + randomization_level * 4)  # 2-6个因子
-
-        all_factors = []
-
-        # 从各个创新库中选择
-        all_factors.extend(random.sample(list(self.narrative_techniques.keys()),
-                                         min(2, len(self.narrative_techniques))))
-
-        char_innovations = []
-        for category, items in self.character_innovations.items():
-            char_innovations.extend(random.sample(items, min(1, len(items))))
-        all_factors.extend(random.sample(char_innovations, min(2, len(char_innovations))))
-
-        world_innovations = []
-        for category, items in self.world_building_innovations.items():
-            world_innovations.extend(random.sample(items, min(1, len(items))))
-        all_factors.extend(random.sample(world_innovations, min(2, len(world_innovations))))
-
-        # 随机选择最终的因子
-        return random.sample(all_factors, min(base_count, len(all_factors)))
-
-    async def generate_enhanced_character(
-        self,
-        config: EnhancedStoryConfig,
-        character_role: str = "protagonist"
-    ) -> Dict[str, Any]:
-        """生成增强的角色 - 集成 CharacterCreator"""
-
-        logger.info(f"开始生成增强角色: {character_role}")
-
-        # 映射角色类型
-        character_type_mapping = {
-            "protagonist": "主角",
-            "antagonist": "反派",
-            "supporting": "重要配角",
-            "mentor": "导师",
-            "love_interest": "爱情线角色",
-            "comic_relief": "搞笑角色"
-        }
-
-        character_type = character_type_mapping.get(character_role, "主角")
-
-        # 构建世界设定信息
-        world_setting = {
-            "genre": config.base_theme,
-            "world_type": config.variant.world_flavor,
-            "story_structure": config.variant.story_structure,
-            "tone": config.variant.tone,
-            "unique_elements": config.variant.unique_elements,
-            "conflict_type": config.variant.conflict_type
-        }
-
-        # 获取原型信息
-        archetype_info = self.diversity_enhancer.character_archetypes.get(
-            config.variant.character_archetype, {}
-        )
-
-        # 应用创新因子
-        innovations = [factor for factor in config.innovation_factors
-                       if factor in sum(self.character_innovations.values(), [])]
-
-        # 构建特殊要求
-        requirements = {
-            "character_archetype": config.variant.character_archetype,
-            "archetype_info": archetype_info,
-            "innovation_elements": innovations,
-            "conflict_type": config.variant.conflict_type,
-            "randomization_level": config.randomization_level,
-            "avoid_names": list(self.used_names),
-            "enhanced_mode": True,
-            "narrative_techniques": [f for f in config.innovation_factors
-                                     if f in self.narrative_techniques],
-            "world_innovations": [f for f in config.innovation_factors
-                                  if f in sum(self.world_building_innovations.values(), [])]
-        }
-
-        logger.info(f"角色创建参数: character_type={character_type}, requirements={requirements}")
-
-        try:
-            # 调用 CharacterCreatorTool 创建完整角色
-            result = await self.character_creator_tool.execute({
-                "character_type": character_type,
-                "genre": config.base_theme,
-                "world_setting": world_setting,
-                "requirements": requirements
-            })
-
-            character = result["character"]
-
-            # 记录使用的名称
-            self.used_names.add(character["name"])
-            if character.get("nickname"):
-                self.used_names.add(character["nickname"])
-
-            # 添加增强信息
-            character.update({
-                "role": character_role,
-                "archetype": config.variant.character_archetype,
-                "innovation_elements": innovations,
-                "world_context": config.variant.world_flavor,
-                "enhanced_generation": True,
-                "config_variant_id": config.variant.variant_id,
-                "generation_timestamp": int(time.time())
-            })
-
-            logger.info(f"成功生成增强角色: {character['name']}")
-            return character
-
-        except Exception as e:
-            logger.error(f"角色生成失败: {e}")
-
-            # 备用方案：使用简化生成
-            return await self.generate_llm_character(
-                config, character_role
-            )
-
-    async def generate_llm_character(
-        self,
-        config: EnhancedStoryConfig,
-        character_role: str = "protagonist"
-    ) -> Dict[str, Any]:
-        """生成增强的角色"""
-
-        # 基础角色信息
-        archetype_info = self.diversity_enhancer.character_archetypes[
-            config.variant.character_archetype]
-
-        # 应用创新因子
-        innovations = [factor for factor in config.innovation_factors
-                       if factor in sum(self.character_innovations.values(), [])]
-
-        # 生成独特名称
-        character_name = await self._generate_unique_character_name(
-            config, character_role, innovations
-        )
-
-        # 生成详细角色信息
+    async def generate_enhanced_character(self, config: EnhancedStoryConfig,
+                                          role: str = "protagonist") -> Dict[str, Any]:
+        """生成增强角色"""
         character_prompt = f"""
-        基于以下信息创造一个独特的角色：
+        基于以下创新设定创造一个独特的{role}角色：
 
-        角色名称：{character_name}
-        角色类型：{character_role}
-        原型特征：{archetype_info}
-        世界背景：{config.variant.world_flavor}
-        故事主题：{config.base_theme}
-        创新元素：{innovations}
-        独特要素：{config.variant.unique_elements}
+        故事背景：
+        - 主题：{config.base_theme}
+        - 世界风味：{config.variant.world_flavor}
+        - 角色原型：{config.variant.character_archetype}
 
-        请生成详细的角色信息，包括：
-        1. 外貌特征（独特而有辨识度）
-        2. 性格特质（复杂而立体）
-        3. 背景故事（与众不同的经历）
-        4. 能力体系（创新的力量设定）
-        5. 内心动机（深层的驱动力）
-        6. 人际关系（特殊的连接方式）
-        7. 成长目标（独特的发展方向）
+        创新要求：
+        - 融入创新因子：{config.innovation_factors}
+        - 独特元素：{config.variant.unique_elements}
+        - 避免常见俗套：{self.enhanced_config.avoid_cliches}
 
-        要求角色设定要新颖、避免俗套，充分体现创新元素。
+        请创造一个具有以下特点的角色：
+        1. 符合{config.variant.character_archetype}原型但有独特变化
+        2. 巧妙融入{random.choice(config.innovation_factors)}的创新元素
+        3. 适合{config.variant.world_flavor}的世界设定
+        4. 具有内在冲突和成长空间
+        5. 名字具有{config.variant.world_flavor}特色
+
+        返回格式：
+        名字：
+        年龄：
+        外貌：
+        性格：
+        背景：
+        能力：
+        目标：
+        弱点：
+        创新特色：
         """
 
-        character_response = await self.llm_service.generate_text(character_prompt, temperature=0.8)
+        response = await self.llm_service.generate_text(character_prompt, temperature=0.8)
 
-        return {
-            "name": character_name,
-            "role": character_role,
+        # 解析角色信息
+        character_info = self._parse_character_response(response.content)
+
+        # 确保名字唯一性
+        if not character_info.get("name") or character_info["name"] in self.used_names:
+            character_info["name"] = self._generate_composite_name(config, role)
+        else:
+            self.used_names.add(character_info["name"])
+
+        character_info["role"] = role
+        character_info["config_used"] = {
+            "theme": config.base_theme,
             "archetype": config.variant.character_archetype,
-            "detailed_info": character_response.content,
-            "innovation_elements": innovations,
-            "world_context": config.variant.world_flavor
+            "world_flavor": config.variant.world_flavor,
+            "innovations": config.innovation_factors
         }
 
-    async def _generate_unique_character_name(
-        self,
-        config: EnhancedStoryConfig,
-        character_role: str,
-        innovations: List[str]
-    ) -> str:
-        """生成独特的角色名称"""
+        return character_info
 
-        max_attempts = 8
+    def _parse_character_response(self, response: str) -> Dict[str, Any]:
+        """解析角色响应"""
+        character = {}
 
-        for attempt in range(max_attempts):
-            # 构建更具变化性的提示词
-            variant_hints = [
-                f"融合{config.variant.world_flavor}特色",
-                f"体现{config.variant.character_archetype}精神",
-                f"展现{innovations[0] if innovations else '独特'}特质",
-                f"彰显角色的{character_role}身份"
-            ]
+        lines = response.split('\n')
+        current_field = None
+        current_content = []
 
-            hint = variant_hints[attempt % len(variant_hints)]
+        field_map = {
+            "名字": "name", "年龄": "age", "外貌": "appearance",
+            "性格": "personality", "背景": "background", "能力": "abilities",
+            "目标": "goals", "弱点": "weaknesses", "创新特色": "innovations"
+        }
 
-            name_prompt = f"""
-            为{config.variant.world_flavor}世界的{config.variant.character_archetype}角色创造独特名字：
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
 
-            角色身份：{character_role}
-            创意方向：{hint}
-            创新元素：{innovations[:2] if innovations else []}
-            时间戳：{int(time.time() * 1000) % 10000}
-            尝试序号：{attempt + 1}
+            # 检查是否是字段标题
+            for chinese_field, english_field in field_map.items():
+                if line.startswith(f"{chinese_field}：") or line.startswith(f"{chinese_field}:"):
+                    # 保存之前的字段
+                    if current_field and current_content:
+                        character[current_field] = '\n'.join(current_content).strip()
 
-            严格要求：
-            1. 绝对不能使用：{list(self.used_names)}
-            2. 必须原创，避免网文常见名
-            3. 体现{config.variant.character_archetype}特质
-            4. 符合{config.variant.world_flavor}风格
-            5. 音韵优美，有文化内涵
+                    # 开始新字段
+                    current_field = english_field
+                    current_content = [line.split('：', 1)[-1].split(':', 1)[-1].strip()]
+                    break
+            else:
+                # 继续当前字段的内容
+                if current_field:
+                    current_content.append(line)
 
-            只返回一个名字：
-            """
+        # 保存最后一个字段
+        if current_field and current_content:
+            character[current_field] = '\n'.join(current_content).strip()
 
-            response = await self.llm_service.generate_text(
-                name_prompt,
-                temperature=0.8 + (attempt * 0.02),  # 递增随机性
-                max_tokens=20
-            )
+        # 提取名字（如果格式不规范）
+        if not character.get("name"):
+            character["name"] = self._extract_name_from_response(response)
 
-            name = self._clean_name(response.content)
+        return character
 
-            if name and name not in self.used_names and len(name) >= 2:
-                self.used_names.add(name)
-                return name
-
-        # 备用方案：组合生成
-        return self._generate_composite_name(config, character_role)
-
-    def _clean_name(self, raw_name: str) -> str:
-        """清理名称"""
-        cleaned = raw_name.strip()
-        cleaned = re.sub(r'["""''`()（）【】\[\]<>《》：:]', '', cleaned)
-        cleaned = re.sub(r'[，。！？；,!?;].*', '', cleaned)
-
+    def _extract_name_from_response(self, response: str) -> str:
+        """从响应中提取名字"""
+        # 简单的名字提取逻辑
+        cleaned = re.sub(r'[^\u4e00-\u9fff\w\s]', '', response)
         words = cleaned.split()
         if words:
             name = words[0]
@@ -445,18 +378,23 @@ class EnhancedStoryGenerator:
         self.used_names.add(composite_name)
         return composite_name
 
-
     async def generate_enhanced_plot_outline(
         self,
         config: EnhancedStoryConfig,
-        chapter_count: int = 20
+        chapter_count: int = None
     ) -> Dict[str, Any]:
         """生成增强的情节大纲"""
 
+        # 使用全局配置的默认章节数
+        if chapter_count is None:
+            chapter_count = self.novel_config.default_chapter_count
+
         structure_info = self.diversity_enhancer.story_structures[config.variant.story_structure]
 
-        # 选择适用的转折技巧
-        applicable_twists = self._select_plot_twists(config.randomization_level)
+        # 选择适用的转折技巧（考虑配置）
+        applicable_twists = []
+        if config.enable_plot_twists:
+            applicable_twists = self._select_plot_twists(config.randomization_level)
 
         # 选择叙述技法
         narrative_technique = random.choice([t for t in config.innovation_factors
@@ -477,8 +415,10 @@ class EnhancedStoryGenerator:
         - 叙述方式：{narrative_technique} - {self.narrative_techniques.get(narrative_technique, {})}
         - 情节转折：{applicable_twists}
         - 创新因子：{config.innovation_factors}
+        - 叙述复杂度：{config.narrative_complexity}
 
         章节数量：{chapter_count}
+        每章字数：约{config.word_count_per_chapter}字
 
         请创造一个{chapter_count}章的详细大纲，要求：
         1. 严格按照{config.variant.story_structure}结构展开
@@ -487,6 +427,7 @@ class EnhancedStoryGenerator:
         4. 运用{narrative_technique}的叙述技法
         5. 确保每章都有明确目标和独特看点
         6. 避免常见俗套情节
+        7. 符合{config.narrative_complexity}复杂度要求
 
         请按章节序号列出大纲，每章包含：
         - 章节标题
@@ -504,7 +445,9 @@ class EnhancedStoryGenerator:
             "plot_twists": applicable_twists,
             "chapter_count": chapter_count,
             "detailed_outline": outline_response.content,
-            "innovation_integration": config.innovation_factors
+            "innovation_integration": config.innovation_factors,
+            "word_count_target": config.word_count_per_chapter * chapter_count,
+            "complexity_level": config.narrative_complexity
         }
 
     def _select_plot_twists(self, randomization_level: float) -> List[Dict[str, Any]]:
@@ -564,9 +507,10 @@ class EnhancedStoryGenerator:
         - 叙述技法：{narrative_technique}
         - 技法应用：{technique_application}
         - 独特元素融入：{random.choice(config.variant.unique_elements)}
+        - 复杂度要求：{config.narrative_complexity}
 
         写作要求：
-        1. 字数：3000-4000字
+        1. 字数：{config.word_count_per_chapter}字左右
         2. 严格按照情节大纲发展
         3. 巧妙融入创新元素，不要生硬
         4. 运用指定的叙述技法
@@ -583,7 +527,7 @@ class EnhancedStoryGenerator:
         chapter_response = await self.llm_service.generate_text(
             chapter_prompt,
             temperature=0.7 + config.randomization_level * 0.2,
-            max_tokens=6000
+            max_tokens=int(config.word_count_per_chapter * 1.5)  # 基于配置调整token数
         )
 
         return {
@@ -591,6 +535,7 @@ class EnhancedStoryGenerator:
             "title": chapter_title,
             "content": chapter_response.content,
             "word_count": len(chapter_response.content),
+            "target_word_count": config.word_count_per_chapter,
             "innovations_used": chapter_innovations,
             "narrative_technique": narrative_technique,
             "technique_application": technique_application,
@@ -616,17 +561,27 @@ class EnhancedStoryGenerator:
 
 
 class EnhancedStoryGeneratorTool(AsyncTool):
-    """增强版故事生成工具"""
+    """增强版故事生成工具 - 集成配置管理版本"""
 
     def __init__(self):
         super().__init__()
         self.generator = EnhancedStoryGenerator()
 
+        # 方案1：获取全局配置
+        self.novel_config = get_novel_config()
+        self.enhanced_config = get_enhanced_config()
+
+        logger.info(f"增强故事生成器初始化完成，配置加载:")
+        logger.info(f"- 默认章节数: {self.novel_config.default_chapter_count}")
+        logger.info(f"- 默认字数: {self.novel_config.default_word_count}")
+        logger.info(f"- 多样性增强: {self.enhanced_config.enable_diversity}")
+        logger.info(f"- 随机化程度: {self.enhanced_config.default_randomization_level}")
+
     @property
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="enhanced_story_generator",
-            description="生成高度差异化的故事内容，确保每次生成都有显著不同",
+            description="生成高度差异化的故事内容，确保每次生成都有显著不同，集成全局配置管理",
             category="generation",
             parameters=[
                 ToolParameter(
@@ -639,65 +594,63 @@ class EnhancedStoryGeneratorTool(AsyncTool):
                     name="base_theme",
                     type="string",
                     description="基础主题",
-                    required=False,
-                    default="修仙"
-                ),
-                ToolParameter(
-                    name="randomization_level",
-                    type="number",
-                    description="随机化程度 0-1",
-                    required=False,
-                    default=0.8
-                ),
-                ToolParameter(
-                    name="avoid_recent",
-                    type="boolean",
-                    description="是否避免最近使用的元素",
-                    required=False,
-                    default=True
+                    required=False
                 ),
                 ToolParameter(
                     name="chapter_count",
                     type="integer",
-                    description="章节数量",
-                    required=False,
-                    default=20
-                ),
-                ToolParameter(
-                    name="config",
-                    type="object",
-                    description="故事配置（用于后续生成）",
+                    description=f"章节数量（默认：{get_novel_config().default_chapter_count}）",
                     required=False
                 ),
                 ToolParameter(
-                    name="characters",
-                    type="array",
-                    description="角色列表（用于章节生成）",
+                    name="randomization_level",
+                    type="number",
+                    description=f"随机化程度0-1（默认：{get_enhanced_config().default_randomization_level}）",
                     required=False
                 ),
                 ToolParameter(
-                    name="plot_outline",
-                    type="object",
-                    description="情节大纲（用于章节生成）",
+                    name="avoid_recent",
+                    type="boolean",
+                    description=f"避免最近使用的元素（默认：{get_enhanced_config().avoid_recent_elements}）",
                     required=False
                 ),
                 ToolParameter(
-                    name="chapter_info",
-                    type="object",
-                    description="章节信息（用于章节生成）",
+                    name="word_count",
+                    type="integer",
+                    description=f"每章字数（默认：{get_novel_config().default_word_count}）",
                     required=False
                 )
             ]
         )
 
-    async def execute(self, parameters: Dict[str, Any],
-                      context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """执行增强版故事生成"""
-
+    async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """执行故事生成任务 - 集成配置版本"""
         action = parameters.get("action")
-        base_theme = parameters.get("base_theme", "修仙")
-        randomization_level = parameters.get("randomization_level", 0.8)
-        avoid_recent = parameters.get("avoid_recent", True)
+
+        # 从参数获取值，如果没有则使用全局配置默认值（方案1）
+        base_theme = parameters.get("base_theme")
+        if not base_theme:
+            # 从配置的偏好主题中选择
+            if self.enhanced_config.preferred_themes:
+                base_theme = random.choice(self.enhanced_config.preferred_themes)
+            else:
+                base_theme = "修仙"
+
+        # 应用全局配置默认值
+        randomization_level = parameters.get(
+            "randomization_level")  # None 会让 generate_enhanced_story_config 使用配置默认值
+        avoid_recent = parameters.get(
+            "avoid_recent")  # None 会让 generate_enhanced_story_config 使用配置默认值
+        chapter_count = parameters.get("chapter_count", self.novel_config.default_chapter_count)
+        word_count = parameters.get("word_count", self.novel_config.default_word_count)
+
+        # 记录使用的配置值
+        logger.info(f"执行 {action} 操作，使用配置:")
+        logger.info(f"- 主题: {base_theme}")
+        logger.info(f"- 章节数: {chapter_count}")
+        logger.info(f"- 字数: {word_count}")
+        logger.info(
+            f"- 随机化: {randomization_level or self.enhanced_config.default_randomization_level}")
 
         if action == "config":
             # 生成故事配置
@@ -705,12 +658,17 @@ class EnhancedStoryGeneratorTool(AsyncTool):
                 base_theme, randomization_level, avoid_recent
             )
 
+            # 应用字数配置
+            config.word_count_per_chapter = word_count
+
             return {
                 "config": asdict(config),
                 "generation_info": {
                     "base_theme": base_theme,
-                    "randomization_level": randomization_level,
-                    "variant_id": config.variant.variant_id
+                    "randomization_level": config.randomization_level,
+                    "variant_id": config.variant.variant_id,
+                    "word_count_per_chapter": word_count,
+                    "used_global_config": True
                 }
             }
 
@@ -726,9 +684,12 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             config = EnhancedStoryConfig(
                 base_theme=config_data.get("base_theme", base_theme),
                 variant=variant,
-                randomization_level=config_data.get("randomization_level", randomization_level),
+                randomization_level=config_data.get("randomization_level",
+                                                    self.enhanced_config.default_randomization_level),
                 innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence", 0.7)
+                constraint_adherence=config_data.get("constraint_adherence",
+                                                     self.enhanced_config.constraint_adherence),
+                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
             )
 
             character = await self.generator.generate_enhanced_character(config)
@@ -741,7 +702,6 @@ class EnhancedStoryGeneratorTool(AsyncTool):
         elif action == "outline":
             # 生成情节大纲
             config_data = parameters.get("config", {})
-            chapter_count = parameters.get("chapter_count", 20)
 
             if not config_data:
                 return {"error": "需要提供故事配置"}
@@ -752,9 +712,12 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             config = EnhancedStoryConfig(
                 base_theme=config_data.get("base_theme", base_theme),
                 variant=variant,
-                randomization_level=config_data.get("randomization_level", randomization_level),
+                randomization_level=config_data.get("randomization_level",
+                                                    self.enhanced_config.default_randomization_level),
                 innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence", 0.7)
+                constraint_adherence=config_data.get("constraint_adherence",
+                                                     self.enhanced_config.constraint_adherence),
+                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
             )
 
             outline = await self.generator.generate_enhanced_plot_outline(config, chapter_count)
@@ -780,9 +743,12 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             config = EnhancedStoryConfig(
                 base_theme=config_data.get("base_theme", base_theme),
                 variant=variant,
-                randomization_level=config_data.get("randomization_level", randomization_level),
+                randomization_level=config_data.get("randomization_level",
+                                                    self.enhanced_config.default_randomization_level),
                 innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence", 0.7)
+                constraint_adherence=config_data.get("constraint_adherence",
+                                                     self.enhanced_config.constraint_adherence),
+                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
             )
 
             chapter = await self.generator.generate_enhanced_chapter(
@@ -794,13 +760,13 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             }
 
         elif action == "full_story":
-            # 生成完整故事
-            chapter_count = parameters.get("chapter_count", 20)
+            # 生成完整故事 - 修复版本
 
             # 1. 生成配置
             config = await self.generator.generate_enhanced_story_config(
                 base_theme, randomization_level, avoid_recent
             )
+            config.word_count_per_chapter = word_count  # 应用字数配置
 
             # 2. 生成主要角色
             protagonist = await self.generator.generate_enhanced_character(config, "protagonist")
@@ -813,16 +779,55 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             plot_outline = await self.generator.generate_enhanced_plot_outline(config,
                                                                                chapter_count)
 
+            # 4. 新增：生成所有章节内容
+            chapters = []
+            logger.info(f"开始生成 {chapter_count} 章内容...")
+
+            for i in range(1, chapter_count + 1):
+                chapter_info = {
+                    "number": i,
+                    "title": f"第{i}章",
+                    "plot_summary": f"第{i}章的情节发展"  # 这里可以从大纲中提取具体内容
+                }
+
+                logger.info(f"生成第 {i} 章...")
+                chapter = await self.generator.generate_enhanced_chapter(
+                    config, chapter_info, characters, plot_outline
+                )
+                chapters.append(chapter)
+
+            total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
+            logger.info(f"完整故事生成完成，总字数: {total_word_count}")
+
             return {
                 "story_package": {
+                    "title": f"{config.variant.title}",  # 从变体配置获取标题
+                    "genre": base_theme,
+                    "theme": base_theme,
                     "config": asdict(config),
                     "characters": characters,
                     "plot_outline": plot_outline,
+                    "chapters": chapters,  # 新增：完整章节内容
                     "generation_info": {
                         "base_theme": base_theme,
                         "chapter_count": chapter_count,
-                        "randomization_level": randomization_level,
-                        "variant_id": config.variant.variant_id
+                        "randomization_level": config.randomization_level,
+                        "variant_id": config.variant.variant_id,
+                        "total_word_count": total_word_count,
+                        "target_word_count": word_count * chapter_count,
+                        "used_global_config": True,
+                        "config_source": {
+                            "novel_config": {
+                                "default_chapter_count": self.novel_config.default_chapter_count,
+                                "default_word_count": self.novel_config.default_word_count,
+                                "enable_diversity": self.enhanced_config.enable_diversity
+                            },
+                            "enhanced_config": {
+                                "randomization_level": self.enhanced_config.default_randomization_level,
+                                "innovation_factors": self.enhanced_config.default_innovation_factors,
+                                "preferred_themes": self.enhanced_config.preferred_themes
+                            }
+                        }
                     }
                 }
             }
@@ -839,29 +844,29 @@ if __name__ == "__main__":
     async def test_enhanced_generation():
         tool = EnhancedStoryGeneratorTool()
 
-        # 生成多个不同的故事配置
-        for i in range(3):
-            print(f"\n=== 故事变体 {i + 1} ===")
+        # 测试配置集成
+        print("=== 测试配置集成 ===")
+        print(f"默认章节数: {tool.novel_config.default_chapter_count}")
+        print(f"默认字数: {tool.novel_config.default_word_count}")
+        print(f"多样性开关: {tool.enhanced_config.enable_diversity}")
+        print(f"默认创新因子: {tool.enhanced_config.default_innovation_factors}")
 
-            # 生成配置
-            config_result = await tool.execute({
-                "action": "config",
-                "base_theme": "修仙",
-                "randomization_level": 0.8,
-                "avoid_recent": True
-            })
+        # 生成故事（使用配置默认值）
+        result = await tool.execute({
+            "action": "full_story",
+            "base_theme": "科幻"  # 只指定主题，其他使用配置默认值
+        })
 
-            config = config_result["config"]
-            variant = config["variant"]
+        if result.get("story_package"):
+            story = result["story_package"]
+            generation_info = story["generation_info"]
 
-            print(f"标题: {variant['title']}")
-            print(f"结构: {variant['story_structure']}")
-            print(f"原型: {variant['character_archetype']}")
-            print(f"风味: {variant['world_flavor']}")
-            print(f"冲突: {variant['conflict_type']}")
-            print(f"基调: {variant['tone']}")
-            print(f"创新因子: {config['innovation_factors']}")
-            print(f"描述: {variant['description'][:150]}...")
+            print(f"\n=== 生成结果 ===")
+            print(f"标题: {story.get('title')}")
+            print(f"章节数: {len(story.get('chapters', []))}")
+            print(f"总字数: {generation_info.get('total_word_count')}")
+            print(f"使用全局配置: {generation_info.get('used_global_config')}")
+            print(f"配置来源: {generation_info.get('config_source')}")
 
 
     asyncio.run(test_enhanced_generation())

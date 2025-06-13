@@ -1,14 +1,14 @@
 # config/config_manager.py
 """
-统一配置管理系统
-简化原有的多个配置类，提供统一接口
+统一配置管理系统 - 增强版
+集成enhanced_story_generator的配置需求
 """
 import os
 import yaml
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Optional, Type, Union
+from typing import Dict, Any, Optional, Type, Union, List
 from pydantic import BaseModel, Field
 from loguru import logger
 
@@ -190,13 +190,64 @@ class MCPConfig(BaseModel):
     cors_origins: list = Field(default=["*"], description="CORS允许的源")
 
 
+class EnhancedGenerationConfig(BaseModel):
+    """增强生成配置"""
+    # 随机化和多样性
+    default_randomization_level: float = Field(default=0.8, description="默认随机化程度(0-1)")
+    enable_diversity: bool = Field(default=True, description="启用多样性增强")
+    avoid_recent_elements: bool = Field(default=True, description="避免最近使用的元素")
+    constraint_adherence: float = Field(default=0.7, description="约束遵循度(0-1)")
+
+    # 创新因子配置
+    default_innovation_factors: List[str] = Field(
+        default=["叙述技法", "角色创新", "情节转折"],
+        description="默认创新因子"
+    )
+    innovation_intensity: str = Field(default="medium", description="创新强度: low/medium/high")
+
+    # 故事结构偏好
+    preferred_story_structures: List[str] = Field(
+        default=["英雄之旅", "多线并行", "时间循环"],
+        description="偏好的故事结构"
+    )
+    preferred_character_archetypes: List[str] = Field(
+        default=["不羁浪子", "天才少年", "复仇使者"],
+        description="偏好的角色原型"
+    )
+    preferred_world_flavors: List[str] = Field(
+        default=["古典仙侠", "现代都市", "蒸汽朋克"],
+        description="偏好的世界风味"
+    )
+
+    # 内容生成偏好
+    avoid_cliches: bool = Field(default=True, description="避免俗套情节")
+    enable_plot_twists: bool = Field(default=True, description="启用情节转折")
+    narrative_complexity: str = Field(default="medium",
+                                      description="叙述复杂度: simple/medium/complex")
+
+    # 主题偏好
+    preferred_themes: List[str] = Field(
+        default=["修仙", "都市", "科幻", "奇幻"],
+        description="偏好的主题类型"
+    )
+    forbidden_themes: List[str] = Field(default=[], description="禁用的主题类型")
+
+
 class NovelConfig(BaseModel):
-    """小说生成配置"""
+    """小说生成配置 - 增强版"""
+    # 基础生成配置
     default_chapter_count: int = Field(default=20, description="默认章节数")
     default_word_count: int = Field(default=2000, description="默认章节字数")
     max_characters: int = Field(default=50, description="最大角色数")
-    enable_diversity: bool = Field(default=True, description="启用多样性增强")
     cache_generated_content: bool = Field(default=True, description="缓存生成内容")
+
+    # 集成增强生成配置
+    enhanced: EnhancedGenerationConfig = Field(default_factory=EnhancedGenerationConfig)
+
+    # 生成质量配置
+    quality_threshold: float = Field(default=0.7, description="质量阈值")
+    auto_revision: bool = Field(default=True, description="自动修订")
+    consistency_check: bool = Field(default=True, description="一致性检查")
 
 
 class AppSettings(BaseModel):
@@ -233,3 +284,37 @@ _config_manager.register_schema("llm", LLMConfig)
 _config_manager.register_schema("database", DatabaseConfig)
 _config_manager.register_schema("mcp", MCPConfig)
 _config_manager.register_schema("novel", NovelConfig)
+_config_manager.register_schema("enhanced", EnhancedGenerationConfig)
+
+
+def get_config_manager() -> ConfigManager:
+    """获取配置管理器"""
+    return _config_manager
+
+
+def load_app_config() -> AppSettings:
+    """加载应用配置"""
+    return _config_manager.load_config("app", AppSettings)
+
+
+# 便捷函数
+def get_novel_config() -> NovelConfig:
+    """获取小说配置"""
+    app_config = load_app_config()
+    return app_config.novel
+
+
+def get_enhanced_config() -> EnhancedGenerationConfig:
+    """获取增强生成配置"""
+    novel_config = get_novel_config()
+    return novel_config.enhanced
+
+
+if __name__ == "__main__":
+    # 测试配置加载
+    config = load_app_config()
+    print("配置加载成功:")
+    print(f"- 应用名称: {config.app_name}")
+    print(f"- 默认章节数: {config.novel.default_chapter_count}")
+    print(f"- 随机化程度: {config.novel.enhanced.default_randomization_level}")
+    print(f"- 启用多样性: {config.novel.enhanced.enable_diversity}")

@@ -1,0 +1,81 @@
+# config/novel.yaml
+# 小说生成配置文件 - 增强版
+# 现在enhanced_story_generator会读取这些配置
+
+# 基础生成配置
+default_chapter_count: 25        # 默认章节数（原来硬编码为20）
+default_word_count: 2500         # 默认每章字数（原来硬编码为2000）
+max_characters: 50               # 最大角色数
+cache_generated_content: true    # 缓存生成内容
+quality_threshold: 0.7           # 质量阈值
+auto_revision: true              # 自动修订
+consistency_check: true          # 一致性检查
+
+# 增强生成配置
+enhanced:
+  # 多样性和随机化控制
+  default_randomization_level: 0.9      # 默认随机化程度（原来硬编码为0.8）
+  enable_diversity: true                 # 启用多样性增强（可以关闭）
+  avoid_recent_elements: true            # 避免最近使用的元素
+  constraint_adherence: 0.8              # 约束遵循度
+
+  # 创新因子配置
+  default_innovation_factors:            # 默认创新因子
+    - "叙述技法"
+    - "角色创新"
+    - "情节转折"
+    - "世界创新"
+  innovation_intensity: "high"           # 创新强度: low/medium/high
+
+  # 故事结构偏好
+  preferred_story_structures:            # 偏好的故事结构
+    - "多线并行"
+    - "时间循环"
+    - "逆转重构"
+  preferred_character_archetypes:        # 偏好的角色原型
+    - "复仇使者"
+    - "迷茫探索者"
+    - "堕落天才"
+  preferred_world_flavors:               # 偏好的世界风味
+    - "蒸汽朋克"
+    - "现代都市"
+    - "末世废土"
+
+  # 内容生成偏好
+  avoid_cliches: true                    # 避免俗套情节
+  enable_plot_twists: true               # 启用情节转折
+  narrative_complexity: "high"           # 叙述复杂度: simple/medium/complex
+
+  # 主题控制
+  preferred_themes:                      # 偏好的主题（随机选择时优先考虑）
+    - "科幻"
+    - "奇幻"
+    - "悬疑"
+    - "都市异能"
+  forbidden_themes:                      # 禁用的主题
+    - "恐怖"
+    - "血腥"
+
+---
+# 使用说明：
+#
+# 1. 多样性控制：
+#    - enable_diversity: false  # 关闭所有多样性增强
+#    - default_randomization_level: 0.0  # 最保守的生成
+#
+# 2. 创新程度控制：
+#    - innovation_intensity: "low"    # 少量创新
+#    - innovation_intensity: "medium" # 适度创新
+#    - innovation_intensity: "high"   # 大胆创新
+#
+# 3. 主题控制：
+#    - preferred_themes 为空时，不限制主题选择
+#    - forbidden_themes 中的主题会被自动替换
+#
+# 4. 字数控制：
+#    - default_word_count 影响每章生成的字数
+#    - default_chapter_count 影响默认章节数
+#
+# 5. 结构偏好：
+#    - preferred_* 数组为空时，使用所有可用选项
+#    - 非空时，高随机化情况下会优先选择偏好项

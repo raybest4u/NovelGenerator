@@ -11,8 +11,8 @@ from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock
 
 from core.llm_client import LLMService, LLMResponse
-from core.base_tools import ToolRegistry
 from config.settings import get_settings
+from core.tool_registry import ToolRegistry
 
 
 @pytest.fixture
