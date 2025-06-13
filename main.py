@@ -171,7 +171,7 @@ class NovelGenerator:
 
             # 生成故事包
             result = await enhanced_tool.execute({
-                "action": "full_story",
+                "action": "generate_full_story",
                 "base_theme": theme,
                 "chapter_count": 5,  # 简化为5章
                 "randomization_level": 0.8
@@ -326,36 +326,118 @@ class NovelGenerator:
             print(f"❌ 紧急备份失败: {e}")
 
 
-async def _interactive_generate_debug(self):
-    """交互式生成 - 调试版本"""
-    print("\n🔧 调试模式 - 小说生成向导")
+async def _interactive_generate(self):
+    """交互式生成 - 优化版本"""
+    print("\n🎨 小说生成向导")
 
     try:
-        # 显示可用工具
-        print(f"📦 已注册工具数量: {len(self.tool_registry.tools)}")
-        print("🔧 可用工具列表:")
-        for tool_name in self.tool_registry.tools.keys():
-            print(f"  - {tool_name}")
+        # 获取用户输入
+        theme = input("请输入小说主题 (如: 修仙, 都市, 科幻): ").strip()
+        if not theme:
+            theme = "修仙"
 
-        # 检查特定工具
-        enhanced_tool = self.tool_registry.get_tool("enhanced_story_generator")
-        if enhanced_tool:
-            print("✅ enhanced_story_generator 工具已找到")
+        # 新增：询问角色数量
+        char_count_input = input("请输入希望生成的角色数量 (默认5个): ").strip()
+        try:
+            char_count = int(char_count_input) if char_count_input else 5
+            char_count = max(3, min(char_count, 15))  # 限制在3-15个之间
+        except ValueError:
+            char_count = 5
+
+        # 新增：询问是否生成角色关系
+        generate_relationships = input("是否生成角色关系网络? (y/n, 默认y): ").strip().lower()
+        if generate_relationships in ['', 'y', 'yes']:
+            generate_relationships = True
         else:
-            print("❌ enhanced_story_generator 工具未找到")
-            print("尝试查找类似工具:")
-            similar_tools = [name for name in self.tool_registry.tools.keys()
-                           if 'story' in name or 'generate' in name]
-            print(f"相关工具: {similar_tools}")
+            generate_relationships = False
+
+        print(f"\n🎯 生成参数:")
+        print(f"  主题: {theme}")
+        print(f"  角色数量: {char_count}")
+        print(f"  生成关系: {'是' if generate_relationships else '否'}")
+
+        # 使用增强版故事生成器
+        enhanced_tool = self.tool_registry.get_tool("enhanced_story_generator")
+        if not enhanced_tool:
+            print("❌ 增强版故事生成器未找到")
             return
 
-        # 继续正常的生成流程...
-        # [使用上面修复的代码]
+        print("\n🚀 开始生成故事...")
+
+        # 生成故事包
+        result = await enhanced_tool.execute({
+            "action": "generate_full_story",
+            "theme": theme,
+            "character_count": char_count,  # 新增参数
+            "generate_relationships": generate_relationships,  # 新增参数
+            "chapter_count": 10,
+            "word_count": 3000
+        })
+
+        if result and "story_package" in result:
+            story = result["story_package"]
+
+            print("\n✅ 故事生成完成！")
+            print(f"📖 标题: {story.get('title', '未命名')}")
+            print(f"📝 类型: {story.get('genre', '未知')}")
+            print(f"📊 章节数: {len(story.get('chapters', []))}")
+
+            # 显示角色信息
+            characters = story.get("characters", [])
+            if characters:
+                print(f"\n👥 生成了 {len(characters)} 个角色:")
+                for i, char in enumerate(characters[:5]):  # 显示前5个
+                    char_name = char.get('name', f'角色{i + 1}')
+                    char_role = char.get('story_role', '未知角色')
+                    print(f"  {i + 1}. {char_name} - {char_role}")
+
+                if len(characters) > 5:
+                    print(f"  ... 还有 {len(characters) - 5} 个角色")
+
+                # 新增：显示关系信息
+                if generate_relationships:
+                    relationships = story.get("relationships", [])
+                    if relationships:
+                        print(f"\n🔗 生成了 {len(relationships)} 个角色关系:")
+                        for i, rel in enumerate(relationships[:3]):  # 显示前3个关系
+                            char1_name = self._get_character_name_by_id(characters,
+                                                                        rel.get('character1_id'))
+                            char2_name = self._get_character_name_by_id(characters,
+                                                                        rel.get('character2_id'))
+                            rel_type = rel.get('relationship_type', '未知关系')
+                            print(f"  {i + 1}. {char1_name} ↔ {char2_name} ({rel_type})")
+
+                        if len(relationships) > 3:
+                            print(f"  ... 还有 {len(relationships) - 3} 个关系")
+                    else:
+                        print("\n⚠️ 未生成角色关系")
+            else:
+                print("\n⚠️ 未生成角色信息")
+
+            # 询问是否保存
+            save = input("\n是否保存生成结果? (y/n): ").strip().lower()
+            if save == 'y':
+                await self._save_story(story)
+        else:
+            print("❌ 生成失败 - 未返回有效的故事包")
+            if result:
+                error_msg = result.get('error', '未知错误')
+                print(f"错误详情: {error_msg}")
 
     except Exception as e:
         import traceback
-        print(f"调试信息 - 完整错误:")
-        print(traceback.format_exc())
+        logger.error(f"生成过程出错: {e}")
+        logger.error(f"错误堆栈: {traceback.format_exc()}")
+        print(f"❌ 生成失败: {e}")
+        print("请检查工具是否正确注册和配置")
+
+
+def _get_character_name_by_id(self, characters: list, char_id: str) -> str:
+    """根据ID获取角色名称"""
+    for char in characters:
+        if char.get('id') == char_id:
+            return char.get('name', '未知角色')
+    return '未知角色'
 
 
 async def main():

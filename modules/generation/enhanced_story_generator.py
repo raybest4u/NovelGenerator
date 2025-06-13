@@ -18,6 +18,7 @@ from core.base_tools import AsyncTool, ToolDefinition, ToolParameter, method_cac
 from core.llm_client import get_llm_service
 from config.settings import get_prompt_manager
 from config.config_manager import get_novel_config, get_enhanced_config  # 新增：获取全局配置
+from core.tool_registry import get_tool_registry
 from modules.character import CharacterCreator, CharacterCreatorTool
 from modules.generation.diversity_enhancer import DiversityEnhancer, GenerationVariant
 
@@ -631,7 +632,7 @@ class EnhancedStoryGeneratorTool(AsyncTool):
     def __init__(self):
         super().__init__()
         self.generator = EnhancedStoryGenerator()
-
+        self.tool_registry = get_tool_registry()
         # 方案1：获取全局配置
         self.novel_config = get_novel_config()
         self.enhanced_config = get_enhanced_config()
@@ -688,24 +689,26 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             ]
         )
 
-    async def execute(self, parameters: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> \
-    Dict[str, Any]:
-        """执行增强版故事生成 - 加强错误处理"""
-        action = parameters.get("action", "config")
+    async def execute(self, parameters: Dict[str, Any],
+                      context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """执行增强故事生成 - 优化版本"""
 
-        try:
-            base_theme = parameters.get("base_theme", self.enhanced_config.preferred_themes[
-                0] if self.enhanced_config.preferred_themes else "修仙")
-            randomization_level = parameters.get("randomization_level",
-                                                 self.enhanced_config.default_randomization_level)
-            avoid_recent = parameters.get("avoid_recent",
-                                          self.enhanced_config.avoid_recent_elements)
-            chapter_count = parameters.get("chapter_count", self.novel_config.default_chapter_count)
-            word_count = parameters.get("word_count", self.novel_config.default_word_count)
+        action = parameters.get("action", "generate_full_story")
 
-            if action == "full_story":
-                # 生成完整故事 - 增强错误处理版本
-                logger.info(f"开始生成完整故事: 主题={base_theme}, 章节数={chapter_count}")
+        if action == "generate_full_story":
+            base_theme = parameters.get("theme", "玄幻修仙")
+            chapter_count = parameters.get("chapter_count", 10)
+            word_count = parameters.get("word_count", 3000)
+
+            # 新增参数
+            character_count = parameters.get("character_count", 5)  # 角色数量
+            generate_relationships = parameters.get("generate_relationships", True)  # 是否生成关系
+
+            randomization_level = parameters.get("randomization_level", 0.7)
+            avoid_recent = parameters.get("avoid_recent", True)
+
+            try:
+                logger.info(f"开始生成完整故事包: {base_theme}")
 
                 try:
                     # 1. 生成配置
@@ -720,163 +723,186 @@ class EnhancedStoryGeneratorTool(AsyncTool):
                     return {"error": f"配置生成失败: {str(e)}"}
 
                 try:
-                    # 2. 生成主要角色
-                    logger.info("开始生成角色...")
+                    # 2. 生成角色 - 优化版本
+                    logger.info(f"开始生成 {character_count} 个角色...")
                     characters = []
 
-                    protagonist = await self.generator.generate_enhanced_character(config,
-                                                                                   "protagonist")
-                    if protagonist:
-                        characters.append(protagonist)
-                        logger.info("✅ 主角生成完成")
+                    # 定义角色类型列表
+                    role_types = [
+                        ("protagonist", "主角"),
+                        ("antagonist", "反派"),
+                        ("supporting", "重要配角"),
+                        ("mentor", "导师"),
+                        ("love_interest", "爱情线角色"),
+                        ("sidekick", "伙伴"),
+                        ("rival", "对手"),
+                        ("comic_relief", "喜剧角色"),
+                        ("background", "背景角色")
+                    ]
 
-                    antagonist = await self.generator.generate_enhanced_character(config,
-                                                                                  "antagonist")
-                    if antagonist:
-                        characters.append(antagonist)
-                        logger.info("✅ 反派生成完成")
+                    # 按优先级生成角色
+                    for i in range(character_count):
+                        if i < len(role_types):
+                            role_type, role_name = role_types[i]
+                        else:
+                            # 超过预定义类型时，生成背景角色
+                            role_type = "background"
+                            role_name = f"配角{i - len(role_types) + 1}"
 
-                    supporting = await self.generator.generate_enhanced_character(config,
-                                                                                  "supporting")
-                    if supporting:
-                        characters.append(supporting)
-                        logger.info("✅ 配角生成完成")
+                        try:
+                            character = await self.generator.generate_enhanced_character(config,
+                                                                                         role_type)
+                            if character:
+                                # 确保角色有正确的类型标记
+                                character['character_type'] = role_name
+                                character['id'] = f"char_{i + 1:03d}"  # 生成唯一ID
+                                characters.append(character)
+                                logger.info(
+                                    f"✅ 角色生成完成: {character.get('name', '未命名')} ({role_name})")
+                            else:
+                                logger.warning(f"角色生成失败: {role_name}")
+                        except Exception as e:
+                            logger.error(f"生成{role_name}失败: {e}")
 
                     if not characters:
                         logger.warning("未生成任何角色，使用默认角色")
                         characters = [
-                            {"name": "主角", "role": "protagonist", "description": "待完善"}]
+                            {"id": "char_001", "name": "主角", "character_type": "主角",
+                             "description": "待完善"}
+                        ]
+
+                    logger.info(f"✅ 总共生成了 {len(characters)} 个角色")
 
                 except Exception as e:
                     logger.error(f"角色生成失败: {e}")
                     characters = [
-                        {"name": "主角", "role": "protagonist", "description": "生成失败"}]
+                        {"id": "char_001", "name": "主角", "character_type": "主角",
+                         "description": "生成失败"}
+                    ]
 
                 try:
-                    # 3. 生成情节大纲
+                    # 3. 生成角色关系网络 - 新增功能
+                    relationships = []
+                    if generate_relationships and len(characters) > 1:
+                        logger.info("开始生成角色关系网络...")
+
+                        # 获取关系管理工具
+                        relationship_tool = self.tool_registry.get_tool("relationship_manager")
+                        if relationship_tool:
+                            # 生成主要角色之间的关系
+                            main_characters = characters[:min(5, len(characters))]  # 只为前5个主要角色生成关系
+
+                            for i in range(len(main_characters)):
+                                for j in range(i + 1, len(main_characters)):
+                                    try:
+                                        rel_result = await relationship_tool.execute({
+                                            "action": "create",
+                                            "character1": main_characters[i],
+                                            "character2": main_characters[j]
+                                        })
+
+                                        if rel_result and "relationship" in rel_result:
+                                            relationships.append(rel_result["relationship"])
+                                            logger.info(
+                                                f"✅ 关系生成: {main_characters[i]['name']} ↔ {main_characters[j]['name']}")
+
+                                    except Exception as e:
+                                        logger.error(f"生成关系失败: {e}")
+
+                        logger.info(f"✅ 生成了 {len(relationships)} 个角色关系")
+                    else:
+                        logger.info("跳过角色关系生成")
+
+                except Exception as e:
+                    logger.error(f"关系生成失败: {e}")
+                    relationships = []
+
+                try:
+                    # 4. 生成情节大纲
                     logger.info("开始生成情节大纲...")
                     plot_outline = await self.generator.generate_enhanced_plot_outline(config,
                                                                                        chapter_count)
-                    logger.info("✅ 情节大纲生成完成")
+                    logger.info(f"✅ 情节大纲生成完成{plot_outline}")
 
                 except Exception as e:
                     logger.error(f"情节大纲生成失败: {e}")
                     plot_outline = {"error": f"大纲生成失败: {str(e)}"}
 
                 try:
-                    # 4. 生成章节内容
-                    logger.info(f"开始生成 {chapter_count} 章内容...")
+                    # 5. 生成章节内容
+                    logger.info("开始生成章节内容...")
                     chapters = []
-
-                    for i in range(1, chapter_count + 1):
+                    chapter_writer = self.tool_registry.get_tool("chapter_writer")
+                    for i in range(min(chapter_count, 3)):  # 限制为前3章以节省时间
                         try:
-                            chapter_info = {
-                                "number": i,
-                                "title": f"第{i}章",
-                                "plot_summary": f"第{i}章的情节发展"
-                            }
+                            chapter_info = {"number": i+1, "title": "开篇", "content": "故事从这里开始..."}
 
-                            logger.info(f"生成第 {i} 章...")
-                            chapter = await self.generator.generate_enhanced_chapter(
-                                config, chapter_info, characters, plot_outline
-                            )
-
-                            if chapter:
-                                chapters.append(chapter)
-                                logger.info(f"✅ 第 {i} 章生成完成")
-                            else:
-                                logger.warning(f"第 {i} 章生成失败，跳过")
-
-                        except Exception as e:
-                            logger.error(f"第 {i} 章生成失败: {e}")
-                            # 添加错误章节占位符
-                            chapters.append({
-                                "number": i,
-                                "title": f"第{i}章",
-                                "content": "章节生成失败",
-                                "word_count": 0,
-                                "error": str(e)
+                            # 基本使用
+                            chapter = await chapter_writer.execute({
+                                "chapter_info": {
+                                    "number": i+1,
+                                    "title": "初入江湖",
+                                    "summary": "主角踏入修仙世界",
+                                    "target_word_count": 3000
+                                },
+                                "story_context": {
+                                    "characters": characters,
+                                    "world_setting": plot_outline
+                                },
+                                "scene_count": 4,
+                                "writing_style": "traditional"
                             })
 
+                            # chapter = await self.generator.generate_enhanced_chapter(
+                            #     config, chapter_info, characters,plot_outline
+                            # )
+                            if chapter:
+                                chapters.append(chapter)
+                                logger.info(f"✅ 第{i + 1}章生成完成")
+                        except Exception as e:
+                            logger.error(f"第{i + 1}章生成失败: {e}")
+
                     if not chapters:
-                        logger.warning("未生成任何章节")
-                        chapters = [
-                            {"title": "未生成章节", "content": "章节生成失败", "word_count": 0}]
-
-                    total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
-                    logger.info(f"完整故事生成完成，总字数: {total_word_count}")
+                        chapters = [{"number": 1, "title": "开篇", "content": "故事从这里开始..."}]
 
                 except Exception as e:
-                    logger.error(f"章节生成过程失败: {e}")
-                    chapters = [{"title": "生成失败", "content": "未能生成章节", "word_count": 0}]
-                    total_word_count = 0
+                    logger.error(f"章节生成失败: {e}")
+                    chapters = [{"number": 1, "title": "开篇", "content": "故事从这里开始..."}]
 
-                # 安全构建返回结果
-                try:
-                    variant_dict = asdict(config.variant) if hasattr(config,
-                                                                     'variant') and config.variant else {}
-                    config_dict = asdict(config) if config else {}
-
-                    return {
-                        "story_package": {
-                            "title": variant_dict.get("title", f"{base_theme}小说"),
-                            "genre": base_theme,
-                            "theme": base_theme,
-                            "config": config_dict,
-                            "characters": characters,
-                            "plot_outline": plot_outline,
-                            "chapters": chapters,
-                            "generation_info": {
-                                "base_theme": base_theme,
-                                "chapter_count": len(chapters),
-                                "actual_chapter_count": chapter_count,
-                                "randomization_level": randomization_level,
-                                "variant_id": variant_dict.get("variant_id", "unknown"),
-                                "total_word_count": total_word_count,
-                                "target_word_count": word_count * chapter_count,
-                                "used_global_config": True,
-                                "generation_success": len(chapters) > 0,
-                                "config_source": {
-                                    "novel_config": {
-                                        "default_chapter_count": self.novel_config.default_chapter_count,
-                                        "default_word_count": self.novel_config.default_word_count,
-                                        "enable_diversity": self.enhanced_config.enable_diversity
-                                    }
-                                }
-                            }
-                        }
+                # 6. 组装完整故事包
+                story_package = {
+                    "title": f"{config.variant.world_flavor}之{base_theme}",
+                    "genre": base_theme,
+                    "theme": base_theme,
+                    "description": f"一个充满{config.variant.unique_elements}的{base_theme}故事",
+                    "characters": characters,  # 包含所有生成的角色
+                    "relationships": relationships,  # 包含角色关系网络
+                    "plot_outline": plot_outline,
+                    "chapters": chapters,
+                    "world_setting": {
+                        "world_flavor": config.variant.world_flavor,
+                        "unique_elements": config.variant.unique_elements,
+                        "innovation_factors": config.innovation_factors
+                    },
+                    "generation_stats": {
+                        "character_count": len(characters),
+                        "relationship_count": len(relationships),
+                        "chapter_count": len(chapters),
+                        "total_words": sum(len(ch.get('content', '')) for ch in chapters)
                     }
-
-                except Exception as e:
-                    logger.error(f"构建返回结果失败: {e}")
-                    return {
-                        "error": f"构建返回结果失败: {str(e)}",
-                        "story_package": {
-                            "title": f"{base_theme}小说",
-                            "genre": base_theme,
-                            "theme": base_theme,
-                            "chapters": chapters or [],
-                            "characters": characters or [],
-                            "generation_info": {"error": str(e)}
-                        }
-                    }
-
-            else:
-                return {"error": f"不支持的操作类型: {action}"}
-
-        except Exception as e:
-            logger.error(f"execute 方法执行失败: {e}")
-            import traceback
-            logger.error(f"完整错误堆栈: {traceback.format_exc()}")
-            return {
-                "error": f"执行失败: {str(e)}",
-                "story_package": {
-                    "title": "生成失败",
-                    "chapters": [],
-                    "characters": [],
-                    "generation_info": {"error": str(e)}
                 }
-            }
+
+                logger.info("✅ 完整故事包生成完成")
+                return {
+                    "success": True,
+                    "story_package": story_package
+                }
+
+            except Exception as e:
+                logger.error(f"故事生成过程异常: {e}")
+                return {"error": f"故事生成失败: {str(e)}"}
+
+        return {"error": "不支持的操作类型"}
 
 
 # 使用示例
