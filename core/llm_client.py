@@ -207,19 +207,25 @@ class FunctionCallHandler:
             raise ValueError(f"未知函数: {name}")
 
         try:
-            args = json.loads(arguments)
-            func = self.functions[name]["function"]
+            import json
+            args_dict = json.loads(arguments) if arguments else {}
+        except json.JSONDecodeError:
+            raise ValueError(f"无效的参数格式: {arguments}")
 
+        func_info = self.functions[name]
+        func = func_info["function"]
+
+        try:
             if asyncio.iscoroutinefunction(func):
-                result = await func(**args)
+                result = await func(**args_dict)
             else:
-                result = func(**args)
+                result = func(**args_dict)
 
-            return json.dumps(result, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False) if not isinstance(result, str) else result
 
         except Exception as e:
             logger.error(f"函数调用失败 {name}: {e}")
-            return json.dumps({"error": str(e)}, ensure_ascii=False)
+            raise e
 
 
 class LLMService:

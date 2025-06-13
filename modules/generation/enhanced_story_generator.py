@@ -619,217 +619,195 @@ class EnhancedStoryGeneratorTool(AsyncTool):
             ]
         )
 
-    async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """执行故事生成任务 - 集成配置版本"""
-        action = parameters.get("action")
+    async def execute(self, parameters: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> \
+    Dict[str, Any]:
+        """执行增强版故事生成 - 加强错误处理"""
+        action = parameters.get("action", "config")
 
-        # 从参数获取值，如果没有则使用全局配置默认值（方案1）
-        base_theme = parameters.get("base_theme")
-        if not base_theme:
-            # 从配置的偏好主题中选择
-            if self.enhanced_config.preferred_themes:
-                base_theme = random.choice(self.enhanced_config.preferred_themes)
-            else:
-                base_theme = "修仙"
+        try:
+            base_theme = parameters.get("base_theme", self.enhanced_config.preferred_themes[
+                0] if self.enhanced_config.preferred_themes else "修仙")
+            randomization_level = parameters.get("randomization_level",
+                                                 self.enhanced_config.default_randomization_level)
+            avoid_recent = parameters.get("avoid_recent",
+                                          self.enhanced_config.avoid_recent_elements)
+            chapter_count = parameters.get("chapter_count", self.novel_config.default_chapter_count)
+            word_count = parameters.get("word_count", self.novel_config.default_word_count)
 
-        # 应用全局配置默认值
-        randomization_level = parameters.get(
-            "randomization_level")  # None 会让 generate_enhanced_story_config 使用配置默认值
-        avoid_recent = parameters.get(
-            "avoid_recent")  # None 会让 generate_enhanced_story_config 使用配置默认值
-        chapter_count = parameters.get("chapter_count", self.novel_config.default_chapter_count)
-        word_count = parameters.get("word_count", self.novel_config.default_word_count)
+            if action == "full_story":
+                # 生成完整故事 - 增强错误处理版本
+                logger.info(f"开始生成完整故事: 主题={base_theme}, 章节数={chapter_count}")
 
-        # 记录使用的配置值
-        logger.info(f"执行 {action} 操作，使用配置:")
-        logger.info(f"- 主题: {base_theme}")
-        logger.info(f"- 章节数: {chapter_count}")
-        logger.info(f"- 字数: {word_count}")
-        logger.info(
-            f"- 随机化: {randomization_level or self.enhanced_config.default_randomization_level}")
+                try:
+                    # 1. 生成配置
+                    config = await self.generator.generate_enhanced_story_config(
+                        base_theme, randomization_level, avoid_recent
+                    )
+                    config.word_count_per_chapter = word_count
+                    logger.info("✅ 故事配置生成完成")
 
-        if action == "config":
-            # 生成故事配置
-            config = await self.generator.generate_enhanced_story_config(
-                base_theme, randomization_level, avoid_recent
-            )
+                except Exception as e:
+                    logger.error(f"配置生成失败: {e}")
+                    return {"error": f"配置生成失败: {str(e)}"}
 
-            # 应用字数配置
-            config.word_count_per_chapter = word_count
+                try:
+                    # 2. 生成主要角色
+                    logger.info("开始生成角色...")
+                    characters = []
 
-            return {
-                "config": asdict(config),
-                "generation_info": {
-                    "base_theme": base_theme,
-                    "randomization_level": config.randomization_level,
-                    "variant_id": config.variant.variant_id,
-                    "word_count_per_chapter": word_count,
-                    "used_global_config": True
-                }
-            }
+                    protagonist = await self.generator.generate_enhanced_character(config,
+                                                                                   "protagonist")
+                    if protagonist:
+                        characters.append(protagonist)
+                        logger.info("✅ 主角生成完成")
 
-        elif action == "character":
-            # 生成角色
-            config_data = parameters.get("config", {})
-            if not config_data:
-                return {"error": "需要提供故事配置"}
+                    antagonist = await self.generator.generate_enhanced_character(config,
+                                                                                  "antagonist")
+                    if antagonist:
+                        characters.append(antagonist)
+                        logger.info("✅ 反派生成完成")
 
-            # 重建配置对象
-            variant_data = config_data.get("variant", {})
-            variant = GenerationVariant(**variant_data)
-            config = EnhancedStoryConfig(
-                base_theme=config_data.get("base_theme", base_theme),
-                variant=variant,
-                randomization_level=config_data.get("randomization_level",
-                                                    self.enhanced_config.default_randomization_level),
-                innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence",
-                                                     self.enhanced_config.constraint_adherence),
-                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
-            )
+                    supporting = await self.generator.generate_enhanced_character(config,
+                                                                                  "supporting")
+                    if supporting:
+                        characters.append(supporting)
+                        logger.info("✅ 配角生成完成")
 
-            character = await self.generator.generate_enhanced_character(config)
+                    if not characters:
+                        logger.warning("未生成任何角色，使用默认角色")
+                        characters = [
+                            {"name": "主角", "role": "protagonist", "description": "待完善"}]
 
-            return {
-                "character": character,
-                "config_used": asdict(config)
-            }
+                except Exception as e:
+                    logger.error(f"角色生成失败: {e}")
+                    characters = [
+                        {"name": "主角", "role": "protagonist", "description": "生成失败"}]
 
-        elif action == "outline":
-            # 生成情节大纲
-            config_data = parameters.get("config", {})
+                try:
+                    # 3. 生成情节大纲
+                    logger.info("开始生成情节大纲...")
+                    plot_outline = await self.generator.generate_enhanced_plot_outline(config,
+                                                                                       chapter_count)
+                    logger.info("✅ 情节大纲生成完成")
 
-            if not config_data:
-                return {"error": "需要提供故事配置"}
+                except Exception as e:
+                    logger.error(f"情节大纲生成失败: {e}")
+                    plot_outline = {"error": f"大纲生成失败: {str(e)}"}
 
-            # 重建配置对象
-            variant_data = config_data.get("variant", {})
-            variant = GenerationVariant(**variant_data)
-            config = EnhancedStoryConfig(
-                base_theme=config_data.get("base_theme", base_theme),
-                variant=variant,
-                randomization_level=config_data.get("randomization_level",
-                                                    self.enhanced_config.default_randomization_level),
-                innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence",
-                                                     self.enhanced_config.constraint_adherence),
-                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
-            )
+                try:
+                    # 4. 生成章节内容
+                    logger.info(f"开始生成 {chapter_count} 章内容...")
+                    chapters = []
 
-            outline = await self.generator.generate_enhanced_plot_outline(config, chapter_count)
+                    for i in range(1, chapter_count + 1):
+                        try:
+                            chapter_info = {
+                                "number": i,
+                                "title": f"第{i}章",
+                                "plot_summary": f"第{i}章的情节发展"
+                            }
 
-            return {
-                "plot_outline": outline,
-                "config_used": asdict(config)
-            }
+                            logger.info(f"生成第 {i} 章...")
+                            chapter = await self.generator.generate_enhanced_chapter(
+                                config, chapter_info, characters, plot_outline
+                            )
 
-        elif action == "chapter":
-            # 生成章节
-            config_data = parameters.get("config", {})
-            characters = parameters.get("characters", [])
-            plot_outline = parameters.get("plot_outline", {})
-            chapter_info = parameters.get("chapter_info", {})
+                            if chapter:
+                                chapters.append(chapter)
+                                logger.info(f"✅ 第 {i} 章生成完成")
+                            else:
+                                logger.warning(f"第 {i} 章生成失败，跳过")
 
-            if not all([config_data, characters, plot_outline, chapter_info]):
-                return {"error": "需要提供完整的生成参数"}
+                        except Exception as e:
+                            logger.error(f"第 {i} 章生成失败: {e}")
+                            # 添加错误章节占位符
+                            chapters.append({
+                                "number": i,
+                                "title": f"第{i}章",
+                                "content": "章节生成失败",
+                                "word_count": 0,
+                                "error": str(e)
+                            })
 
-            # 重建配置对象
-            variant_data = config_data.get("variant", {})
-            variant = GenerationVariant(**variant_data)
-            config = EnhancedStoryConfig(
-                base_theme=config_data.get("base_theme", base_theme),
-                variant=variant,
-                randomization_level=config_data.get("randomization_level",
-                                                    self.enhanced_config.default_randomization_level),
-                innovation_factors=config_data.get("innovation_factors", []),
-                constraint_adherence=config_data.get("constraint_adherence",
-                                                     self.enhanced_config.constraint_adherence),
-                word_count_per_chapter=config_data.get("word_count_per_chapter", word_count)
-            )
+                    if not chapters:
+                        logger.warning("未生成任何章节")
+                        chapters = [
+                            {"title": "未生成章节", "content": "章节生成失败", "word_count": 0}]
 
-            chapter = await self.generator.generate_enhanced_chapter(
-                config, chapter_info, characters, plot_outline
-            )
+                    total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
+                    logger.info(f"完整故事生成完成，总字数: {total_word_count}")
 
-            return {
-                "chapter": chapter
-            }
+                except Exception as e:
+                    logger.error(f"章节生成过程失败: {e}")
+                    chapters = [{"title": "生成失败", "content": "未能生成章节", "word_count": 0}]
+                    total_word_count = 0
 
-        elif action == "full_story":
-            # 生成完整故事 - 修复版本
+                # 安全构建返回结果
+                try:
+                    variant_dict = asdict(config.variant) if hasattr(config,
+                                                                     'variant') and config.variant else {}
+                    config_dict = asdict(config) if config else {}
 
-            # 1. 生成配置
-            config = await self.generator.generate_enhanced_story_config(
-                base_theme, randomization_level, avoid_recent
-            )
-            config.word_count_per_chapter = word_count  # 应用字数配置
-
-            # 2. 生成主要角色
-            protagonist = await self.generator.generate_enhanced_character(config, "protagonist")
-            antagonist = await self.generator.generate_enhanced_character(config, "antagonist")
-            supporting = await self.generator.generate_enhanced_character(config, "supporting")
-
-            characters = [protagonist, antagonist, supporting]
-
-            # 3. 生成情节大纲
-            plot_outline = await self.generator.generate_enhanced_plot_outline(config,
-                                                                               chapter_count)
-
-            # 4. 新增：生成所有章节内容
-            chapters = []
-            logger.info(f"开始生成 {chapter_count} 章内容...")
-
-            for i in range(1, chapter_count + 1):
-                chapter_info = {
-                    "number": i,
-                    "title": f"第{i}章",
-                    "plot_summary": f"第{i}章的情节发展"  # 这里可以从大纲中提取具体内容
-                }
-
-                logger.info(f"生成第 {i} 章...")
-                chapter = await self.generator.generate_enhanced_chapter(
-                    config, chapter_info, characters, plot_outline
-                )
-                chapters.append(chapter)
-
-            total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
-            logger.info(f"完整故事生成完成，总字数: {total_word_count}")
-
-            return {
-                "story_package": {
-                    "title": f"{config.variant.title}",  # 从变体配置获取标题
-                    "genre": base_theme,
-                    "theme": base_theme,
-                    "config": asdict(config),
-                    "characters": characters,
-                    "plot_outline": plot_outline,
-                    "chapters": chapters,  # 新增：完整章节内容
-                    "generation_info": {
-                        "base_theme": base_theme,
-                        "chapter_count": chapter_count,
-                        "randomization_level": config.randomization_level,
-                        "variant_id": config.variant.variant_id,
-                        "total_word_count": total_word_count,
-                        "target_word_count": word_count * chapter_count,
-                        "used_global_config": True,
-                        "config_source": {
-                            "novel_config": {
-                                "default_chapter_count": self.novel_config.default_chapter_count,
-                                "default_word_count": self.novel_config.default_word_count,
-                                "enable_diversity": self.enhanced_config.enable_diversity
-                            },
-                            "enhanced_config": {
-                                "randomization_level": self.enhanced_config.default_randomization_level,
-                                "innovation_factors": self.enhanced_config.default_innovation_factors,
-                                "preferred_themes": self.enhanced_config.preferred_themes
+                    return {
+                        "story_package": {
+                            "title": variant_dict.get("title", f"{base_theme}小说"),
+                            "genre": base_theme,
+                            "theme": base_theme,
+                            "config": config_dict,
+                            "characters": characters,
+                            "plot_outline": plot_outline,
+                            "chapters": chapters,
+                            "generation_info": {
+                                "base_theme": base_theme,
+                                "chapter_count": len(chapters),
+                                "actual_chapter_count": chapter_count,
+                                "randomization_level": randomization_level,
+                                "variant_id": variant_dict.get("variant_id", "unknown"),
+                                "total_word_count": total_word_count,
+                                "target_word_count": word_count * chapter_count,
+                                "used_global_config": True,
+                                "generation_success": len(chapters) > 0,
+                                "config_source": {
+                                    "novel_config": {
+                                        "default_chapter_count": self.novel_config.default_chapter_count,
+                                        "default_word_count": self.novel_config.default_word_count,
+                                        "enable_diversity": self.enhanced_config.enable_diversity
+                                    }
+                                }
                             }
                         }
                     }
+
+                except Exception as e:
+                    logger.error(f"构建返回结果失败: {e}")
+                    return {
+                        "error": f"构建返回结果失败: {str(e)}",
+                        "story_package": {
+                            "title": f"{base_theme}小说",
+                            "genre": base_theme,
+                            "theme": base_theme,
+                            "chapters": chapters or [],
+                            "characters": characters or [],
+                            "generation_info": {"error": str(e)}
+                        }
+                    }
+
+            else:
+                return {"error": f"不支持的操作类型: {action}"}
+
+        except Exception as e:
+            logger.error(f"execute 方法执行失败: {e}")
+            import traceback
+            logger.error(f"完整错误堆栈: {traceback.format_exc()}")
+            return {
+                "error": f"执行失败: {str(e)}",
+                "story_package": {
+                    "title": "生成失败",
+                    "chapters": [],
+                    "characters": [],
+                    "generation_info": {"error": str(e)}
                 }
             }
-
-        else:
-            return {"error": "不支持的操作类型"}
 
 
 # 使用示例

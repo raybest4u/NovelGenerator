@@ -151,8 +151,38 @@ class BaseTool(ABC):
 
 
 class AsyncTool(BaseTool):
-    """异步工具基类 - 现在继承自统一的BaseTool"""
-    pass  # 所有功能已在BaseTool中实现
+    # 在 AsyncTool 类中补充完整的 safe_execute 方法
+    async def safe_execute(self, parameters: Dict[str, Any],
+                           context: Optional[Dict[str, Any]] = None) -> ToolResponse:
+        """安全执行工具"""
+        call_id = f"{self.definition.name}_{int(time.time() * 1000)}"
+        start_time = time.time()
+
+        try:
+            await self.pre_execute(parameters, context)
+            result = await self.execute(parameters, context)
+            result = await self.post_execute(result, parameters)
+
+            execution_time = time.time() - start_time
+
+            return ToolResponse(
+                id=call_id,
+                success=True,
+                result=result,
+                execution_time=execution_time
+            )
+
+        except Exception as e:
+            execution_time = time.time() - start_time
+            error_result = await self.on_error(e, parameters)
+
+            return ToolResponse(
+                id=call_id,
+                success=False,
+                error=str(e),
+                result=error_result,
+                execution_time=execution_time
+            )
 
 
 # 工具构建器 - 保留一个版本

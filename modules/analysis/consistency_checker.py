@@ -196,7 +196,6 @@ class ConsistencyChecker:
 
     async def _check_world_consistency(self) -> List[ConsistencyIssue]:
         """检查世界观一致性"""
-
         issues = []
 
         # 检查世界设定完整性
@@ -215,67 +214,73 @@ class ConsistencyChecker:
                 related_elements=missing_elements
             ))
 
+        # 检查世界设定内部一致性
+        power_system = self.world_facts.get("power_system", {})
+        if power_system:
+            # 检查力量体系的逻辑一致性
+            levels = power_system.get("levels", [])
+            if len(levels) < 3:
+                issues.append(ConsistencyIssue(
+                    id="power_system_simple",
+                    type="world",
+                    severity="low",
+                    description="力量体系层级过于简单",
+                    location="力量体系设定",
+                    suggestions=["增加更多力量层级和详细描述"],
+                    related_elements=["power_system"]
+                ))
+
         return issues
 
     async def _check_timeline_consistency(self) -> List[ConsistencyIssue]:
         """检查时间线一致性"""
-
         issues = []
 
         if not self.timeline_events:
-            issues.append(ConsistencyIssue(
-                id="timeline_empty",
-                type="timeline",
-                severity="low",
-                description="缺少时间线事件",
-                location="时间线",
-                suggestions=["创建详细的时间线"],
-                related_elements=["timeline"]
-            ))
+            return issues
 
-        # 检查时间冲突
-        conflicts = self._find_timeline_conflicts()
-        for conflict in conflicts:
-            issues.append(ConsistencyIssue(
-                id=f"timeline_conflict_{len(issues)}",
-                type="timeline",
-                severity="high",
-                description=conflict["description"],
-                location="时间线",
-                suggestions=["调整事件时间安排"],
-                related_elements=conflict["events"]
-            ))
+        # 按时间排序事件
+        sorted_events = sorted(self.timeline_events,
+                              key=lambda x: x.get("timestamp", 0))
+
+        # 检查事件逻辑顺序
+        for i in range(1, len(sorted_events)):
+            current_event = sorted_events[i]
+            previous_event = sorted_events[i-1]
+
+            # 检查是否有时间冲突
+            if current_event.get("timestamp", 0) <= previous_event.get("timestamp", 0):
+                issues.append(ConsistencyIssue(
+                    id=f"timeline_conflict_{i}",
+                    type="timeline",
+                    severity="high",
+                    description=f"时间线冲突：{current_event.get('name')} 与 {previous_event.get('name')}",
+                    location="故事时间线",
+                    suggestions=["调整事件时间顺序"],
+                    related_elements=[current_event.get("name", ""), previous_event.get("name", "")]
+                ))
 
         return issues
 
+
     async def _check_logic_consistency(self, story_data: Dict[str, Any]) -> List[ConsistencyIssue]:
         """检查逻辑一致性"""
-
         issues = []
 
-        # 检查基本逻辑
-        if not story_data.get("protagonist"):
-            issues.append(ConsistencyIssue(
-                id="logic_no_protagonist",
-                type="logic",
-                severity="critical",
-                description="缺少明确的主角",
-                location="故事结构",
-                suggestions=["确定故事主角"],
-                related_elements=["protagonist"]
-            ))
+        # 检查角色能力与情节的匹配度
+        characters = story_data.get("characters", [])
+        chapters = story_data.get("chapters", [])
 
-        # 检查冲突设定
-        if not story_data.get("central_conflict"):
-            issues.append(ConsistencyIssue(
-                id="logic_no_conflict",
-                type="logic",
-                severity="high",
-                description="缺少中心冲突",
-                location="故事结构",
-                suggestions=["设定明确的中心冲突"],
-                related_elements=["conflict"]
-            ))
+        for char in characters:
+            char_name = char.get("name", "")
+            abilities = char.get("abilities", [])
+
+            # 简单的逻辑检查：角色使用了未设定的能力
+            for chapter in chapters:
+                content = chapter.get("content", "") + chapter.get("summary", "")
+                if char_name in content:
+                    # 这里可以添加更复杂的能力使用检查逻辑
+                    pass
 
         return issues
 
@@ -382,22 +387,22 @@ class ConsistencyChecker:
         """生成修复建议"""
 
         recommendations = []
-
         # 根据问题类型生成建议
-        if any(issue.type == "character" for issue in issues):
-            recommendations.append("完善角色设定，确保信息完整性")
+        issue_types = set(issue.type for issue in issues)
+        if "character" in issue_types:
+            recommendations.append("完善角色设定，补充缺失的基本信息")
 
-        if any(issue.type == "plot" for issue in issues):
-            recommendations.append("检查情节逻辑，加强前后连接")
+        if "plot" in issue_types:
+            recommendations.append("梳理故事情节逻辑，确保前后呼应")
 
-        if any(issue.type == "world" for issue in issues):
-            recommendations.append("统一世界观设定，避免内部矛盾")
+        if "world" in issue_types:
+            recommendations.append("丰富世界观设定，建立完整的背景体系")
 
-        if any(issue.type == "timeline" for issue in issues):
-            recommendations.append("整理时间线，解决时间冲突")
+        if "timeline" in issue_types:
+            recommendations.append("整理故事时间线，消除时间冲突")
 
-        if any(issue.severity == "critical" for issue in issues):
-            recommendations.append("优先处理严重问题，确保故事可读性")
+        if "logic" in issue_types:
+            recommendations.append("检查故事逻辑，确保角色行为合理")
 
         return recommendations
 
