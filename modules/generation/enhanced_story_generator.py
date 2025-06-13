@@ -379,22 +379,28 @@ class EnhancedStoryGenerator:
         config: EnhancedStoryConfig,
         chapter_count: int = None
     ) -> Dict[str, Any]:
-        """生成增强的情节大纲"""
+        """生成增强的情节大纲 - 修复版本"""
 
         # 使用全局配置的默认章节数
         if chapter_count is None:
             chapter_count = self.novel_config.default_chapter_count
 
-        structure_info = self.diversity_enhancer.story_structures[config.variant.story_structure]
+        # 安全获取故事结构信息
+        try:
+            structure_info = self.diversity_enhancer.story_structures.get(
+                config.variant.story_structure,
+                "传统三段式结构"
+            )
+        except (AttributeError, KeyError):
+            structure_info = "传统三段式结构"
 
         # 选择适用的转折技巧（考虑配置）
         applicable_twists = []
         if config.enable_plot_twists:
             applicable_twists = self._select_plot_twists(config.randomization_level)
 
-        # 选择叙述技法
-        narrative_technique = random.choice([t for t in config.innovation_factors
-                                             if t in self.narrative_techniques])
+        # 修复：安全选择叙述技法
+        narrative_technique = self._select_narrative_technique_safely(config)
 
         outline_prompt = f"""
         基于以下创新设定创造一个独特的故事大纲：
@@ -433,36 +439,99 @@ class EnhancedStoryGenerator:
         - 情感基调
         """
 
-        outline_response = await self.llm_service.generate_text(outline_prompt, temperature=0.8)
+        try:
+            outline_response = await self.llm_service.generate_text(outline_prompt, temperature=0.8)
 
-        return {
-            "story_structure": config.variant.story_structure,
-            "narrative_technique": narrative_technique,
-            "plot_twists": applicable_twists,
-            "chapter_count": chapter_count,
-            "detailed_outline": outline_response.content,
-            "innovation_integration": config.innovation_factors,
-            "word_count_target": config.word_count_per_chapter * chapter_count,
-            "complexity_level": config.narrative_complexity
-        }
+            return {
+                "story_structure": config.variant.story_structure,
+                "narrative_technique": narrative_technique,
+                "plot_twists": applicable_twists,
+                "chapter_count": chapter_count,
+                "detailed_outline": outline_response.content,
+                "innovation_integration": config.innovation_factors,
+                "word_count_target": config.word_count_per_chapter * chapter_count,
+                "complexity_level": config.narrative_complexity
+            }
+        except Exception as e:
+            logger.error(f"生成情节大纲时出错: {e}")
+            # 返回错误恢复版本
+            return {
+                "story_structure": config.variant.story_structure,
+                "narrative_technique": narrative_technique,
+                "plot_twists": [],
+                "chapter_count": chapter_count,
+                "detailed_outline": f"第1章到第{chapter_count}章的基础大纲框架",
+                "innovation_integration": config.innovation_factors,
+                "word_count_target": config.word_count_per_chapter * chapter_count,
+                "complexity_level": config.narrative_complexity,
+                "error": str(e)
+            }
+
+    def _select_narrative_technique_safely(self, config: EnhancedStoryConfig) -> str:
+        """安全选择叙述技法"""
+        try:
+            # 确保 narrative_techniques 已初始化
+            if not hasattr(self, 'narrative_techniques') or not self.narrative_techniques:
+                self.narrative_techniques = self._load_narrative_techniques()
+
+            # 确保 innovation_factors 存在且不为空
+            if not config.innovation_factors:
+                logger.warning("创新因子列表为空，使用默认叙述技法")
+                return "传统叙述"
+
+            # 查找匹配的叙述技法
+            matching_techniques = [t for t in config.innovation_factors
+                                   if t in self.narrative_techniques]
+
+            if matching_techniques:
+                return random.choice(matching_techniques)
+            else:
+                # 如果没有匹配的，从 narrative_techniques 中随机选择一个
+                logger.warning("创新因子中没有匹配的叙述技法，随机选择一个")
+                available_techniques = list(self.narrative_techniques.keys())
+                if available_techniques:
+                    return random.choice(available_techniques)
+                else:
+                    # 如果连 narrative_techniques 都是空的，返回默认值
+                    logger.error("叙述技法库为空，使用默认技法")
+                    return "传统叙述"
+
+        except Exception as e:
+            logger.error(f"选择叙述技法时出错: {e}")
+            return "传统叙述"
 
     def _select_plot_twists(self, randomization_level: float) -> List[Dict[str, Any]]:
-        """选择情节转折"""
-        twist_count = int(1 + randomization_level * 3)  # 1-4个转折
+        """选择情节转折 - 安全版本"""
+        try:
+            # 确保 plot_twists 已初始化
+            if not hasattr(self, 'plot_twists') or not self.plot_twists:
+                self.plot_twists = self._load_plot_twists()
 
-        selected_twists = []
-        for _ in range(twist_count):
-            twist_type = random.choice(list(self.plot_twists.keys()))
-            twist_info = self.plot_twists[twist_type]
+            if not self.plot_twists:
+                logger.warning("情节转折库为空")
+                return []
 
-            selected_twists.append({
-                "type": twist_type,
-                "variation": random.choice(twist_info["types"]),
-                "timing": random.choice(twist_info["timing"]),
-                "expected_impact": random.choice(twist_info["impact"])
-            })
+            twist_count = max(1, int(1 + randomization_level * 3))  # 1-4个转折
 
-        return selected_twists
+            selected_twists = []
+            available_twists = list(self.plot_twists.keys())
+
+            for _ in range(min(twist_count, len(available_twists))):
+                twist_type = random.choice(available_twists)
+                twist_info = self.plot_twists[twist_type]
+
+                selected_twists.append({
+                    "type": twist_type,
+                    "variation": random.choice(twist_info.get("types", ["基础变化"])),
+                    "timing": random.choice(twist_info.get("timing", ["中期"])),
+                    "expected_impact": random.choice(twist_info.get("impact", ["情节推进"]))
+                })
+
+            return selected_twists
+
+        except Exception as e:
+            logger.error(f"选择情节转折时出错: {e}")
+            return []
 
     async def generate_enhanced_chapter(
         self,

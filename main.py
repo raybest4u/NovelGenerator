@@ -5,7 +5,9 @@
 """
 import asyncio
 import argparse
+import json
 import time
+from datetime import datetime
 from pathlib import Path
 from loguru import logger
 
@@ -16,6 +18,8 @@ from core.cache_manager import get_cache_manager
 
 # 统一的模块注册
 from modules import register_all_tools
+from modules.save_story import save_story_enhanced
+from modules.save_txt import save_novel_as_txt
 
 
 class NovelGenerator:
@@ -250,8 +254,57 @@ class NovelGenerator:
     async def _save_story(self, story: dict):
         """保存故事"""
         try:
-            import json
-            from datetime import datetime
+            result = await save_novel_as_txt(story)
+            await self._interactive_save_story(story)
+
+        except Exception as e:
+            logger.error(f"保存失败: {e}")
+            print(f"❌ 保存失败: {e}")
+
+    async def _interactive_save_story(self, story: dict):
+        """交互式保存故事 - 集成版本"""
+        try:
+            print("\n💾 开始保存故事...")
+
+            # 使用增强版保存方法
+            result = await save_story_enhanced(story)
+
+            if result['success']:
+                print(f"""
+    ✅ 故事保存成功！
+
+    📖 保存信息:
+      小说ID: {result['novel_id']}
+      标题: {result['title']}
+      章节数: {result['chapters_saved']}
+      角色数: {result['characters_saved']}
+      总字数: {result['total_word_count']}
+      保存时间: {result['saved_at']}
+
+    📁 数据库位置: fantasy_novel.db
+    📁 JSON备份: generated_novels/backups/
+    """)
+            else:
+                print(f"❌ 保存失败: {result['error']}")
+
+                # 提供JSON备份选项
+                fallback = input("是否保存为JSON文件作为备份? (y/n): ").strip().lower()
+                if fallback == 'y':
+                    await self._save_story_json_fallback(story)
+
+        except Exception as e:
+            logger.error(f"保存过程出错: {e}")
+            print(f"❌ 保存失败: {e}")
+
+            # 提供紧急备份
+            emergency = input("是否创建紧急JSON备份? (y/n): ").strip().lower()
+            if emergency == 'y':
+                await self._save_story_json_fallback(story)
+
+    async def _save_story_json_fallback(self, story: dict):
+        """JSON备份保存方法"""
+        try:
+            from pathlib import Path
 
             # 创建保存目录
             save_dir = Path("generated_novels")
@@ -259,18 +312,18 @@ class NovelGenerator:
 
             # 生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"novel_{timestamp}.json"
+            filename = f"novel_backup_{timestamp}.json"
             filepath = save_dir / filename
 
             # 保存文件
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(story, f, ensure_ascii=False, indent=2)
 
-            print(f"✅ 故事已保存到: {filepath}")
+            print(f"📁 紧急备份已保存: {filepath}")
 
         except Exception as e:
-            logger.error(f"保存失败: {e}")
-            print(f"❌ 保存失败: {e}")
+            logger.error(f"紧急备份失败: {e}")
+            print(f"❌ 紧急备份失败: {e}")
 
 
 async def _interactive_generate_debug(self):
