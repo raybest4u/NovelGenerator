@@ -1,7 +1,3 @@
-# ============================================================================
-# modules/__init__.py - 统一模块注册
-# ============================================================================
-
 # modules/__init__.py
 """
 模块工具统一注册系统
@@ -18,7 +14,7 @@ def register_all_tools(registry: ToolRegistry):
 
     try:
         # 角色管理模块
-        from modules.character.character_creator_tool import register_character_tools
+        from modules.character.tools import register_character_tools
         register_character_tools(registry)
         registered_count += len([name for name in registry.tools.keys() if "character" in name])
         logger.debug("角色管理工具已注册")
@@ -46,11 +42,12 @@ def register_all_tools(registry: ToolRegistry):
         logger.warning(f"写作模块导入失败: {e}")
 
     try:
-        # 分析工具模块
+        # 分析工具模块（修改这里）
         from modules.analysis.tools import register_analysis_tools
         register_analysis_tools(registry)
         registered_count += len(
-            [name for name in registry.tools.keys() if "analysis" in name or "consistency" in name])
+            [name for name in registry.tools.keys() if any(keyword in name for keyword in
+             ["consistency", "analysis", "quality"])])
         logger.debug("分析工具已注册")
     except ImportError as e:
         logger.warning(f"分析工具模块导入失败: {e}")

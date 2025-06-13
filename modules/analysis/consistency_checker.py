@@ -1,5 +1,4 @@
-
-# modules/tools/consistency_checker.py
+# modules/analysis/consistency_checker.py
 """
 一致性检查器
 检查小说中的各种一致性问题
@@ -9,8 +8,6 @@ from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, asdict
 from core.base_tools import AsyncTool, ToolDefinition, ToolParameter
 from core.llm_client import get_llm_service
-from modules.generation.enhanced_story_generator import EnhancedStoryGeneratorTool
-from modules.tools import NameGeneratorTool, TimelineManagerTool
 
 
 @dataclass
@@ -142,34 +139,31 @@ class ConsistencyChecker:
 
         for char_name, character in self.character_registry.items():
             # 检查角色信息完整性
-            required_fields = ["name", "appearance", "personality", "background", "abilities"]
-            missing_fields = [field for field in required_fields
-                              if field not in character or not character[field]]
+            required_fields = ["name", "appearance", "personality", "background"]
+            missing_fields = [field for field in required_fields if not character.get(field)]
 
             if missing_fields:
                 issues.append(ConsistencyIssue(
-                    id=f"char_incomplete_{char_name}",
+                    id=f"char_{char_name}_missing",
                     type="character",
                     severity="medium",
-                    description=f"角色{char_name}缺少必要信息：{', '.join(missing_fields)}",
-                    location=f"角色定义",
-                    suggestions=[f"补充{char_name}的{field}信息" for field in missing_fields],
+                    description=f"角色{char_name}缺少必要信息",
+                    location=f"角色设定-{char_name}",
+                    suggestions=[f"补充{field}信息" for field in missing_fields],
                     related_elements=[char_name]
                 ))
 
-            # 检查角色能力与设定的一致性
-            abilities = character.get("abilities", {})
-            power_level = abilities.get("power_level", "")
-
-            if power_level and not self._validate_power_level(power_level):
+            # 检查角色名称重复
+            similar_names = self._find_similar_names(char_name)
+            if similar_names:
                 issues.append(ConsistencyIssue(
-                    id=f"char_power_{char_name}",
+                    id=f"char_{char_name}_similar",
                     type="character",
-                    severity="high",
-                    description=f"角色{char_name}的实力等级{power_level}不符合体系设定",
-                    location=f"角色能力定义",
-                    suggestions=[f"调整{char_name}的实力等级"],
-                    related_elements=[char_name, "power_system"]
+                    severity="low",
+                    description=f"角色{char_name}与其他角色名称相似",
+                    location=f"角色设定-{char_name}",
+                    suggestions=["考虑重新命名以避免混淆"],
+                    related_elements=[char_name] + similar_names
                 ))
 
         return issues
@@ -179,25 +173,24 @@ class ConsistencyChecker:
 
         issues = []
 
-        outline = story_data.get("story_outline", {})
-        plot_points = outline.get("plot_points", [])
+        # 检查故事大纲
+        outline = story_data.get("outline", {})
+        if not outline:
+            issues.append(ConsistencyIssue(
+                id="plot_no_outline",
+                type="plot",
+                severity="high",
+                description="缺少故事大纲",
+                location="故事结构",
+                suggestions=["创建详细的故事大纲"],
+                related_elements=["story_structure"]
+            ))
 
-        # 检查情节点逻辑顺序
-        for i, plot_point in enumerate(plot_points[:-1]):
-            current_outcomes = plot_point.get("outcomes", [])
-            next_prerequisites = plot_points[i + 1].get("prerequisites", [])
-
-            # 检查前后情节点的逻辑连接
-            if not self._check_plot_connection(current_outcomes, next_prerequisites):
-                issues.append(ConsistencyIssue(
-                    id=f"plot_connection_{i}",
-                    type="plot",
-                    severity="high",
-                    description=f"情节点{plot_point.get('name', '')}与下一个情节点缺乏逻辑连接",
-                    location=f"情节点{i}-{i + 1}",
-                    suggestions=["添加过渡情节", "调整情节顺序"],
-                    related_elements=[plot_point.get("id", ""), plot_points[i + 1].get("id", "")]
-                ))
+        # 检查章节连贯性
+        chapters = story_data.get("chapters", [])
+        if len(chapters) > 1:
+            plot_issues = await self._check_chapter_connections(chapters)
+            issues.extend(plot_issues)
 
         return issues
 
@@ -206,17 +199,21 @@ class ConsistencyChecker:
 
         issues = []
 
-        # 检查魔法体系一致性
-        magic_system = self.world_facts.get("magic_system", {})
-        if magic_system:
-            magic_issues = await self._check_magic_system_consistency(magic_system)
-            issues.extend(magic_issues)
+        # 检查世界设定完整性
+        required_world_elements = ["geography", "culture", "power_system", "history"]
+        missing_elements = [elem for elem in required_world_elements if
+                            not self.world_facts.get(elem)]
 
-        # 检查地理一致性
-        geography = self.world_facts.get("geography", {})
-        if geography:
-            geo_issues = await self._check_geography_consistency(geography)
-            issues.extend(geo_issues)
+        if missing_elements:
+            issues.append(ConsistencyIssue(
+                id="world_incomplete",
+                type="world",
+                severity="medium",
+                description="世界设定不完整",
+                location="世界观设定",
+                suggestions=[f"补充{elem}相关设定" for elem in missing_elements],
+                related_elements=missing_elements
+            ))
 
         return issues
 
@@ -225,19 +222,29 @@ class ConsistencyChecker:
 
         issues = []
 
-        # 检查事件时间冲突
-        for i, event1 in enumerate(self.timeline_events):
-            for event2 in self.timeline_events[i + 1:]:
-                if self._has_timeline_conflict(event1, event2):
-                    issues.append(ConsistencyIssue(
-                        id=f"timeline_conflict_{event1.get('id', '')}_{event2.get('id', '')}",
-                        type="timeline",
-                        severity="critical",
-                        description=f"事件{event1.get('name', '')}与{event2.get('name', '')}存在时间冲突",
-                        location="时间线",
-                        suggestions=["调整事件时间", "分离冲突角色"],
-                        related_elements=[event1.get("id", ""), event2.get("id", "")]
-                    ))
+        if not self.timeline_events:
+            issues.append(ConsistencyIssue(
+                id="timeline_empty",
+                type="timeline",
+                severity="low",
+                description="缺少时间线事件",
+                location="时间线",
+                suggestions=["创建详细的时间线"],
+                related_elements=["timeline"]
+            ))
+
+        # 检查时间冲突
+        conflicts = self._find_timeline_conflicts()
+        for conflict in conflicts:
+            issues.append(ConsistencyIssue(
+                id=f"timeline_conflict_{len(issues)}",
+                type="timeline",
+                severity="high",
+                description=conflict["description"],
+                location="时间线",
+                suggestions=["调整事件时间安排"],
+                related_elements=conflict["events"]
+            ))
 
         return issues
 
@@ -246,162 +253,92 @@ class ConsistencyChecker:
 
         issues = []
 
-        # 使用LLM检查复杂逻辑问题
-        prompt = f"""
-        请分析以下小说设定的逻辑一致性，找出可能的问题：
+        # 检查基本逻辑
+        if not story_data.get("protagonist"):
+            issues.append(ConsistencyIssue(
+                id="logic_no_protagonist",
+                type="logic",
+                severity="critical",
+                description="缺少明确的主角",
+                location="故事结构",
+                suggestions=["确定故事主角"],
+                related_elements=["protagonist"]
+            ))
 
-        故事大纲：{story_data.get('story_outline', {})}
-        角色设定：{list(self.character_registry.keys())}
-        世界设定：{self.world_facts}
-
-        请识别以下类型的逻辑问题：
-        1. 角色动机与行为不符
-        2. 情节发展不合理
-        3. 世界规则矛盾
-        4. 因果关系错误
-
-        请以简洁的格式列出发现的问题。
-        """
-
-        response = await self.llm_service.generate_text(prompt, temperature=0.3)
-
-        # 解析LLM响应中的逻辑问题
-        logic_issues = self._parse_logic_issues(response.content)
-        issues.extend(logic_issues)
+        # 检查冲突设定
+        if not story_data.get("central_conflict"):
+            issues.append(ConsistencyIssue(
+                id="logic_no_conflict",
+                type="logic",
+                severity="high",
+                description="缺少中心冲突",
+                location="故事结构",
+                suggestions=["设定明确的中心冲突"],
+                related_elements=["conflict"]
+            ))
 
         return issues
 
+    def _find_similar_names(self, name: str) -> List[str]:
+        """查找相似名称"""
+        similar = []
+        for other_name in self.character_registry.keys():
+            if other_name != name and self._names_similar(name, other_name):
+                similar.append(other_name)
+        return similar
+
+    def _names_similar(self, name1: str, name2: str) -> bool:
+        """判断名称是否相似"""
+        # 简单的相似度判断
+        if len(name1) != len(name2):
+            return False
+
+        different_chars = sum(c1 != c2 for c1, c2 in zip(name1, name2))
+        return different_chars <= 1
+
     async def _check_character_in_chapter(
-        self,
-        char_name: str,
-        chapter: Dict[str, Any],
-        story_context: Dict[str, Any]
+        self, char_name: str, chapter: Dict[str, Any], story_context: Dict[str, Any]
     ) -> List[ConsistencyIssue]:
         """检查角色在章节中的一致性"""
-
         issues = []
 
-        character = self.character_registry.get(char_name, {})
-        if not character:
-            return issues
-
-        # 检查角色行为是否符合性格
-        personality = character.get("personality", {})
-        core_traits = personality.get("core_traits", [])
-
-        # 这里可以添加更复杂的行为分析逻辑
+        # 这里可以添加更复杂的角色一致性检查逻辑
+        # 比如检查角色的行为是否符合其性格设定等
 
         return issues
 
     async def _check_chapter_plot_logic(
-        self,
-        chapter: Dict[str, Any],
-        story_context: Dict[str, Any]
+        self, chapter: Dict[str, Any], story_context: Dict[str, Any]
     ) -> List[ConsistencyIssue]:
         """检查章节情节逻辑"""
-
         issues = []
 
-        # 检查章节内事件的因果关系
-        key_events = chapter.get("key_events", [])
-
-        # 这里可以添加更多的情节逻辑检查
+        # 这里可以添加情节逻辑检查
+        # 比如检查前后章节的情节连贯性等
 
         return issues
 
-    async def _check_magic_system_consistency(self, magic_system: Dict[str, Any]) -> List[
+    async def _check_chapter_connections(self, chapters: List[Dict[str, Any]]) -> List[
         ConsistencyIssue]:
-        """检查魔法体系一致性"""
-
+        """检查章节连接"""
         issues = []
 
-        power_levels = magic_system.get("power_levels", [])
-        if len(power_levels) < 3:
-            issues.append(ConsistencyIssue(
-                id="magic_levels_insufficient",
-                type="world",
-                severity="medium",
-                description="魔法体系的实力等级层次不够丰富",
-                location="魔法体系定义",
-                suggestions=["增加更多实力等级", "细化等级差异"],
-                related_elements=["magic_system"]
-            ))
+        for i in range(1, len(chapters)):
+            current_chapter = chapters[i]
+            previous_chapter = chapters[i - 1]
+
+            # 检查章节之间的连贯性
+            # 这里可以添加更复杂的连贯性检查逻辑
 
         return issues
 
-    async def _check_geography_consistency(self, geography: Dict[str, Any]) -> List[
-        ConsistencyIssue]:
-        """检查地理一致性"""
+    def _find_timeline_conflicts(self) -> List[Dict[str, Any]]:
+        """查找时间线冲突"""
+        conflicts = []
 
-        issues = []
+        # 这里可以添加时间线冲突检测逻辑
 
-        # 检查地理要素的逻辑性
-        continents = geography.get("continents", [])
-        climate_zones = geography.get("climate_zones", [])
-
-        if len(continents) > 0 and len(climate_zones) == 0:
-            issues.append(ConsistencyIssue(
-                id="geography_climate_missing",
-                type="world",
-                severity="low",
-                description="定义了大陆但缺少气候带信息",
-                location="地理设定",
-                suggestions=["添加气候带描述"],
-                related_elements=["geography"]
-            ))
-
-        return issues
-
-    def _validate_power_level(self, power_level: str) -> bool:
-        """验证实力等级是否合法"""
-
-        valid_levels = [
-            "凡人", "炼气期", "筑基期", "金丹期", "元婴期",
-            "化神期", "炼虚期", "合体期", "大乘期", "渡劫期", "仙人"
-        ]
-
-        return power_level in valid_levels
-
-    def _check_plot_connection(self, outcomes: List[str], prerequisites: List[str]) -> bool:
-        """检查情节点连接"""
-
-        # 简单检查：如果有共同元素则认为有连接
-        return len(set(outcomes) & set(prerequisites)) > 0
-
-    def _has_timeline_conflict(self, event1: Dict[str, Any], event2: Dict[str, Any]) -> bool:
-        """检查时间线冲突"""
-
-        # 检查同一角色在同一时间的冲突
-        chars1 = set(event1.get("characters_involved", []))
-        chars2 = set(event2.get("characters_involved", []))
-
-        if chars1 & chars2:  # 有共同角色
-            time1 = event1.get("timestamp", "")
-            time2 = event2.get("timestamp", "")
-            if time1 == time2:  # 同一时间
-                return True
-
-        return False
-
-    def _parse_logic_issues(self, llm_response: str) -> List[ConsistencyIssue]:
-        """解析LLM响应中的逻辑问题"""
-
-        issues = []
-        lines = llm_response.strip().split('\n')
-
-        for i, line in enumerate(lines):
-            if line.strip() and ('问题' in line or '矛盾' in line or '不合理' in line):
-                issues.append(ConsistencyIssue(
-                    id=f"logic_issue_{i}",
-                    type="logic",
-                    severity="medium",
-                    description=line.strip(),
-                    location="故事逻辑",
-                    suggestions=["重新审视相关设定", "调整情节逻辑"],
-                    related_elements=["story_logic"]
-                ))
-
-        return issues
+        return conflicts
 
     def _generate_report(self, issues: List[ConsistencyIssue]) -> ConsistencyReport:
         """生成一致性报告"""
@@ -477,7 +414,7 @@ class ConsistencyCheckerTool(AsyncTool):
         return ToolDefinition(
             name="consistency_checker",
             description="检查小说的各种一致性问题，包括角色、情节、世界观、时间线等",
-            category="tools",
+            category="analysis",
             parameters=[
                 ToolParameter(
                     name="check_type",
@@ -565,20 +502,3 @@ class ConsistencyCheckerTool(AsyncTool):
 
         else:
             return {"error": "不支持的检查类型"}
-
-
-# 注册所有工具
-def register_tools():
-    """注册所有辅助工具"""
-    from core.base_tools import get_tool_registry
-
-    registry = get_tool_registry()
-
-    registry.register(NameGeneratorTool())
-    registry.register(TimelineManagerTool())
-    registry.register(ConsistencyCheckerTool())
-    registry.register(EnhancedStoryGeneratorTool())
-
-if __name__ == "__main__":
-    register_tools()
-    print("辅助工具已注册")

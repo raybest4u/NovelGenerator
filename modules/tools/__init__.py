@@ -6,7 +6,7 @@
 
 from .name_generator import NameGenerator, NameGeneratorTool
 from .timeline_manager import TimelineManager, TimelineManagerTool
-from .consistency_checker import ConsistencyChecker, ConsistencyCheckerTool
+from modules.analysis.consistency_checker import ConsistencyChecker, ConsistencyCheckerTool
 
 __all__ = [
     'NameGenerator', 'NameGeneratorTool',

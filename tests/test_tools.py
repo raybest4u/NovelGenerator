@@ -5,10 +5,10 @@
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch
-from modules.tools.name_generator import NameGenerator, NameGeneratorTool
-from modules.tools.timeline_manager import TimelineManager, TimelineManagerTool
-from modules.tools.consistency_checker import ConsistencyChecker, ConsistencyCheckerTool
+from unittest.mock import patch
+from modules.tools.name_generator import NameGenerator
+from modules.tools.timeline_manager import TimelineManager
+from modules.analysis.consistency_checker import ConsistencyChecker
 
 
 class TestNameGenerator:

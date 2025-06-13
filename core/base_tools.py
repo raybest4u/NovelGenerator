@@ -3,6 +3,7 @@
 统一的工具基类定义 - 消除重复代码
 """
 import asyncio
+import functools
 import hashlib
 import json
 import time
@@ -270,3 +271,49 @@ def retry(max_attempts: int = 3, delay: float = 1.0):
         return wrapper
 
     return decorator
+
+
+class MethodCache:
+    """方法缓存装饰器"""
+
+    def __init__(self, maxsize: int = 128, ttl: Optional[int] = None):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self.cache: Dict[str, Any] = {}
+
+    def __call__(self, func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # 生成缓存键
+            cache_key = self._make_key(func.__name__, args, kwargs)
+
+            # 检查缓存
+            if cache_key in self.cache:
+                return self.cache[cache_key]
+
+            # 执行函数并缓存结果
+            result = func(*args, **kwargs)
+            self.cache[cache_key] = result
+
+            # 如果超过最大缓存大小，清理旧条目
+            if len(self.cache) > self.maxsize:
+                # 简单的 FIFO 策略
+                oldest_key = next(iter(self.cache))
+                del self.cache[oldest_key]
+
+            return result
+
+        return wrapper
+
+    def _make_key(self, func_name: str, args: tuple, kwargs: dict) -> str:
+        """生成缓存键"""
+        key_parts = [func_name]
+        key_parts.extend(str(arg) for arg in args)
+        key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
+        return "|".join(key_parts)
+
+
+# 简化版本的 method_cache 函数
+def method_cache(maxsize: int = 128, ttl: Optional[int] = None):
+    """方法缓存装饰器工厂函数"""
+    return MethodCache(maxsize=maxsize, ttl=ttl)
