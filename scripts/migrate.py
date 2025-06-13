@@ -12,7 +12,7 @@ from pathlib import Path
 # 添加项目路径
 sys.path.append(str(Path(__file__).parent.parent))
 
-from data.models import (
+from modules.models import (
     init_database, drop_database, create_database_engine,
     NovelDAO, CharacterDAO
 )

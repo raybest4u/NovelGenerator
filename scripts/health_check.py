@@ -9,8 +9,7 @@ import asyncio
 import aiohttp
 import json
 import sys
-import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 
 
@@ -49,7 +48,7 @@ class HealthChecker:
     async def check_database_connection(self) -> Dict[str, Any]:
         """检查数据库连接"""
         try:
-            from data.models import create_database_session
+            from modules.models import create_database_session
 
             db = create_database_session()
             # 简单查询测试连接
