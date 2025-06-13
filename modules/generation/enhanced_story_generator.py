@@ -695,7 +695,7 @@ class EnhancedStoryGeneratorTool(AsyncTool):
 
         action = parameters.get("action", "generate_full_story")
 
-        if action == "generate_full_story":
+        if action == "full_story":
             base_theme = parameters.get("theme", "玄幻修仙")
             chapter_count = parameters.get("chapter_count", 10)
             word_count = parameters.get("word_count", 3000)

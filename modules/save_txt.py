@@ -33,14 +33,14 @@ class NovelTextFormatter:
             content_parts.append(description_section)
 
         # 4. 角色介绍
-        characters_section = self._format_characters_section(story_package)
-        if characters_section:
-            content_parts.append(characters_section)
+        # characters_section = self._format_characters_section(story_package)
+        # if characters_section:
+        #     content_parts.append(characters_section)
 
         # 5. 故事大纲（可选）
-        outline_section = self._format_outline_section(story_package)
-        if outline_section:
-            content_parts.append(outline_section)
+        # outline_section = self._format_outline_section(story_package)
+        # if outline_section:
+        #     content_parts.append(outline_section)
 
         # 6. 正文内容
         main_content = self._format_main_content(story_package)

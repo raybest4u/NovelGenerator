@@ -839,41 +839,12 @@ class ChapterWriterTool(ContentGeneratorTool):
             name="chapter_writer",
             description="生成完整的章节内容，包括场景规划、内容写作和质量分析",
             category="writing",
-            parameters=self.common_parameters + [
-                ToolParameter(
-                    name="chapter_info",
-                    type="object",
-                    description="章节信息（章节号、标题、大纲等）",
-                    required=True
-                ),
-                ToolParameter(
-                    name="story_context",
-                    type="object",
-                    description="故事背景上下文（角色、世界观、前情等）",
-                    required=False,
-                    default={}
-                ),
-                ToolParameter(
-                    name="scene_count",
-                    type="integer",
-                    description="场景数量（默认3-5个）",
-                    required=False,
-                    default=4
-                ),
-                ToolParameter(
-                    name="writing_style",
-                    type="string",
-                    description="写作风格（traditional/modern/poetic/action）",
-                    required=False,
-                    default="modern",
-                    enum=["traditional", "modern", "poetic", "action"]
-                )
-            ]
+            parameters=self.common_parameters
         )
 
     @cached("chapter_writer", expire_seconds=1800)
     async def generate_content(self, content_type: str, context: Dict[str, Any],
-                               style: str = "modern", word_count: int = 3000) -> Any:
+                               style: str, word_count: int = 3000) -> Any:
         """生成章节内容 - 完整实现"""
         try:
             # 从context中提取参数
@@ -884,6 +855,7 @@ class ChapterWriterTool(ContentGeneratorTool):
 
             # 验证必需参数
             if not chapter_info:
+                logger.warning("需要提供chapter_info参数")
                 return {
                     "success": False,
                     "error": "缺少章节信息参数",
@@ -900,8 +872,8 @@ class ChapterWriterTool(ContentGeneratorTool):
             chapter_content = await self.writer.write_chapter(
                 chapter_info=chapter_info,
                 story_context=story_context,
-                style=writing_style,
-                scene_count=scene_count
+                writing_style=writing_style,
+                target_word_count=word_count
             )
 
             # 格式化返回结果
