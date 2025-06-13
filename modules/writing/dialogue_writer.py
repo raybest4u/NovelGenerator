@@ -36,6 +36,43 @@ class DialogueExchange:
 class DialogueWriter:
     """对话写作器"""
 
+    # 情感图定义（有向图）
+    EMOTION_GRAPH: Dict[str, List[str]] = {
+        # 核心节点
+        "neutral": ["担忧", "平静", "悲伤", "期待", "困惑"],
+        "平静": ["不安", "中性", "满足", "期待"],
+        "不安": ["紧张", "平静", "恐惧"],
+        "紧张": ["愤怒", "不安", "焦虑"],
+        "愤怒": ["中性", "懊悔", "疲惫", "满足"],
+        "悲伤": ["反思", "中性", "忧郁", "怀旧"],
+        "反思": ["醒悟", "悲伤", "困惑"],
+        "醒悟": ["坚定", "反思", "希望"],
+        "坚定": ["希望", "中性", "满足"],
+
+        # 特殊情感路径
+        "担忧": ["沉重", "困惑"],
+        "沉重": ["悲壮与决绝", "决心"],
+        "悲壮与决绝": ["坚定", "释然"],
+        "期待": ["兴奋", "焦虑"],
+        "困惑": ["好奇", "醒悟"],
+        "怀旧": ["感伤", "温暖"],
+        "感伤": ["释然", "忧郁"],
+
+        # 终端节点
+        "满足": [],
+        "希望": [],
+        "释然": [],
+        "恐惧": [],
+        "疲惫": [],
+        "忧郁": [],
+        "温暖": [],
+        "决心": [],
+        "兴奋": [],
+        "焦虑": [],
+        "好奇": [],
+        "懊悔": []
+    }
+
     def __init__(self):
         self.llm_service = get_llm_service()
         self.prompt_manager = get_prompt_manager()
@@ -155,6 +192,119 @@ class DialogueWriter:
 
         return voice_style
 
+    def _create_emotional_progression(self, start_emotion: str, target_emotion: str) -> List[str]:
+        """创建情感发展弧线，使用图搜索算法寻找合理路径"""
+
+        # 特殊情况处理
+        if start_emotion == target_emotion:
+            return [start_emotion]
+
+        # 检查情感是否在图中
+        all_emotions = set(self.EMOTION_GRAPH.keys())
+        for e in (start_emotion, target_emotion):
+            if e not in all_emotions:
+                # 尝试标准化处理
+                normalized = self._normalize_emotion(e)
+                if normalized != e:
+                    return self._create_emotional_progression(normalized, target_emotion)
+                return [start_emotion, target_emotion]
+
+        # BFS搜索最短路径
+        path = self._bfs_search(start_emotion, target_emotion)
+        if path:
+            return path
+
+        # 尝试通过中性节点过渡
+        if "neutral" in all_emotions:
+            path_via_neutral = (
+                self._bfs_search(start_emotion, "neutral") +
+                self._bfs_search("neutral", target_emotion)[1:]
+            )
+            if (len(path_via_neutral) > 1 and
+                path_via_neutral[0] == start_emotion and
+                path_via_neutral[-1] == target_emotion):
+                return path_via_neutral
+
+        # 添加通用过渡状态作为兜底方案
+        return self._fallback_path(start_emotion, target_emotion)
+
+    def _bfs_search(self, start: str, end: str) -> List[str]:
+        """使用BFS算法寻找最短情感路径"""
+        from collections import deque
+        queue = deque([[start]])
+        visited = {start}
+
+        while queue:
+            path = queue.popleft()
+            current = path[-1]
+
+            if current == end:
+                return path
+
+            for neighbor in self.EMOTION_GRAPH.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    new_path = path + [neighbor]
+                    queue.append(new_path)
+
+        return []
+
+    def _normalize_emotion(self, emotion: str) -> str:
+        """情感名称标准化处理"""
+        aliases = {
+            "neutral": ["中性", "平常", "自然"],
+            "sad": ["悲伤", "伤心", "悲哀"],
+            "angry": ["愤怒", "生气", "怒火"],
+            "joy": ["快乐", "开心", "喜悦"]
+        }
+
+        for std_emotion, variants in aliases.items():
+            if emotion in variants:
+                return std_emotion
+        return emotion
+
+    def _fallback_path(self, start: str, end: str) -> List[str]:
+        """生成默认过渡路径"""
+        common_transitions = {
+            ("positive", "negative"): [start, "反思", "neutral", end],
+            ("negative", "positive"): [start, "neutral", "希望", end],
+            ("intense", "calm"): [start, "疲惫", "平静", end],
+            ("calm", "intense"): [start, "不安", "紧张", end]
+        }
+
+        # 情感分类逻辑（简化版）
+        emotion_types = {
+            "positive": ["joy", "满足", "希望", "温暖", "兴奋"],
+            "negative": ["sad", "愤怒", "恐惧", "忧郁", "懊悔"],
+            "intense": ["愤怒", "紧张", "兴奋", "焦虑"],
+            "calm": ["平静", "满足", "neutral", "释然"]
+        }
+
+        # 检测情感类型
+        start_type = next((t for t, ems in emotion_types.items() if start in ems), "")
+        end_type = next((t for t, ems in emotion_types.items() if end in ems), "")
+
+        return common_transitions.get(
+            (start_type, end_type),
+            [start, "neutral", end] if "neutral" in self.EMOTION_GRAPH else [start, end]
+        )
+
+    def add_custom_path(self, path: List[str]):
+        """添加自定义情感路径到图中"""
+        for i in range(len(path) - 1):
+            current = path[i]
+            next_emo = path[i + 1]
+
+            if current not in self.EMOTION_GRAPH:
+                self.EMOTION_GRAPH[current] = []
+
+            if next_emo not in self.EMOTION_GRAPH[current]:
+                self.EMOTION_GRAPH[current].append(next_emo)
+
+            # 确保终点也在图中
+            if next_emo not in self.EMOTION_GRAPH:
+                self.EMOTION_GRAPH[next_emo] = []
+
     async def _plan_dialogue_structure(
         self,
         participants: List[str],
@@ -171,13 +321,15 @@ class DialogueWriter:
         }
 
         line_count = line_count_map.get(length, 8)
-
+        # 🔥 在这里调用 _create_emotional_progression
+        emotional_progression = self._create_emotional_progression(
+            start_emotion="neutral",  # 或者根据context动态确定
+            target_emotion=emotional_goal
+        )
         return {
             "total_lines": line_count,
             "structure": "opening-development-resolution",
-            "emotional_progression": [
-                "neutral", emotional_goal, emotional_goal
-            ],
+            "emotional_progression": emotional_progression,
             "information_flow": "gradual",
             "turn_taking": "balanced"
         }

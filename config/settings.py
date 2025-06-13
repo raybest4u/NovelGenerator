@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic.v1 import BaseSettings, Field
 
 
+
 class LLMConfig(BaseSettings):
     """LLM配置"""
     api_base: str = Field(default="http://localhost:8000/v1", description="API基础URL")
@@ -21,6 +22,13 @@ class LLMConfig(BaseSettings):
     temperature: float = Field(default=0.7, description="温度参数")
     timeout: int = Field(default=60, description="请求超时时间")
     retry_times: int = Field(default=3, description="重试次数")
+    # 新增角色生成专用配置
+    character_generation: dict = Field(default_factory=lambda: {
+        "max_tokens": 8000,  # 角色生成专用token限制
+        "temperature": 0.85,  # 角色生成专用温度
+        "presence_penalty": 0.3,  # 减少重复内容
+        "frequency_penalty": 0.3  # 增加词汇多样性
+    })
 
 
 class DatabaseConfig(BaseSettings):
@@ -45,6 +53,104 @@ class NovelConfig(BaseSettings):
     max_chapters: int = Field(default=100, description="最大章节数")
     auto_save: bool = Field(default=True, description="自动保存")
     consistency_check: bool = Field(default=True, description="一致性检查")
+    # 新增角色质量检查配置
+    character_quality: dict = Field(default_factory=lambda: {
+        "required_fields": ["appearance", "personality", "background", "abilities"],
+        "min_field_length": {
+            "appearance": 100,  # 外貌描述最少100字
+            "personality": 150,  # 性格描述最少150字
+            "background": 200,  # 背景描述最少200字
+            "abilities": 120  # 能力描述最少120字
+        },
+        "quality_threshold": 0.8,  # 质量阈值
+        "auto_enhance": True,  # 自动增强不足的角色信息
+        "max_retry_attempts": 3  # 最大重试次数
+    })
+
+
+# 3. 添加角色生成质量检查器
+# class CharacterQualityChecker:
+#     """角色质量检查器"""
+#
+#     def __init__(self, config: dict):
+#         self.config = config
+#         self.required_fields = config.get("required_fields", [])
+#         self.min_lengths = config.get("min_field_length", {})
+#         self.quality_threshold = config.get("quality_threshold", 0.8)
+#
+#     def check_character_quality(self, character: Character) -> Dict[str, Any]:
+#         """检查角色质量"""
+#         issues = []
+#         quality_score = 1.0
+#
+#         # 检查必要字段
+#         for field in self.required_fields:
+#             if not hasattr(character, field):
+#                 issues.append(f"缺少必要字段: {field}")
+#                 quality_score -= 0.2
+#                 continue
+#
+#             field_data = getattr(character, field)
+#
+#             # 检查字段内容
+#             if self._is_field_empty(field_data):
+#                 issues.append(f"字段 {field} 内容为空")
+#                 quality_score -= 0.15
+#             elif self._is_field_too_simple(field, field_data):
+#                 issues.append(f"字段 {field} 内容过于简单")
+#                 quality_score -= 0.1
+#
+#         # 检查描述长度
+#         for field, min_length in self.min_lengths.items():
+#             if hasattr(character, field):
+#                 field_data = getattr(character, field)
+#                 content_length = self._calculate_content_length(field_data)
+#                 if content_length < min_length:
+#                     issues.append(f"字段 {field} 内容长度不足 ({content_length} < {min_length})")
+#                     quality_score -= 0.05
+#
+#         return {
+#             "quality_score": max(0, quality_score),
+#             "issues": issues,
+#             "passed": quality_score >= self.quality_threshold
+#         }
+#
+#     def _is_field_empty(self, field_data) -> bool:
+#         """检查字段是否为空"""
+#         if field_data is None:
+#             return True
+#         if isinstance(field_data, str) and not field_data.strip():
+#             return True
+#         if isinstance(field_data, list) and not field_data:
+#             return True
+#         if isinstance(field_data, dict) and not field_data:
+#             return True
+#         return False
+#
+#     def _is_field_too_simple(self, field_name: str, field_data) -> bool:
+#         """检查字段内容是否过于简单"""
+#         simple_indicators = [
+#             "待完善", "暂无", "无", "普通", "一般", "标准",
+#             "默认", "基础", "简单", "常见", "平凡"
+#         ]
+#
+#         if isinstance(field_data, str):
+#             return any(indicator in field_data for indicator in simple_indicators)
+#         elif isinstance(field_data, list):
+#             return len(field_data) < 2  # 列表项目太少
+#         elif isinstance(field_data, dict):
+#             return len(field_data) < 3  # 字典项目太少
+#
+#         return False
+#
+#     def _calculate_content_length(self, field_data) -> int:
+#         """计算内容长度"""
+#         if isinstance(field_data, str):
+#             return len(field_data)
+#         elif isinstance(field_data, (list, dict)):
+#             return len(str(field_data))
+#         else:
+#             return len(str(field_data))
 
 
 class MCPConfig(BaseSettings):

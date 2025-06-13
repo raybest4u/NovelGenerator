@@ -3,8 +3,9 @@
 基础工具类定义
 为所有工具提供统一的接口和基础功能
 """
-
+import hashlib
 from abc import ABC, abstractmethod
+from functools import wraps
 from typing import Dict, Any, Optional, List, Type
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -272,14 +273,62 @@ class ToolRegistry:
 
 
 class ToolDecorator:
-    """工具装饰器"""
-
     @staticmethod
-    def cached(expire_seconds: int = 300):
-        """缓存装饰器"""
+    def cached(expire_seconds: int = 300, key_func: callable = None):
+        """缓存装饰器 - 支持任意方法签名"""
         cache = {}
 
         def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                # 生成缓存键
+                if key_func:
+                    cache_key = key_func(*args, **kwargs)
+                else:
+                    # 默认的缓存键生成策略
+                    cache_data = {
+                        'func_name': func.__name__,
+                        'args': args[1:],  # 跳过 self
+                        'kwargs': kwargs
+                    }
+                    cache_str = json.dumps(cache_data, sort_keys=True, default=str)
+                    cache_key = hashlib.md5(cache_str.encode()).hexdigest()
+
+                current_time = time.time()
+
+                # 检查缓存
+                if cache_key in cache:
+                    cached_result, timestamp = cache[cache_key]
+                    if current_time - timestamp < expire_seconds:
+                        if hasattr(args[0], 'definition'):
+                            print(f"使用缓存结果: {args[0].definition.name}.{func.__name__}")
+                        return cached_result
+
+                # 执行并缓存
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(*args, **kwargs)
+                else:
+                    result = func(*args, **kwargs)
+
+                cache[cache_key] = (result, current_time)
+
+                # 清理过期缓存
+                expired_keys = [k for k, (_, ts) in cache.items() if current_time - ts >= expire_seconds]
+                for k in expired_keys:
+                    del cache[k]
+
+                return result
+
+            return wrapper
+        return decorator
+
+    @staticmethod
+    def cached_for_tool_execute(expire_seconds: int = 300):
+        """专门为工具execute方法设计的缓存装饰器"""
+        cache = {}
+
+        def decorator(func):
+            @wraps(func)
             async def wrapper(self, parameters: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
                 # 生成缓存键
                 cache_key = json.dumps(parameters, sort_keys=True)
@@ -289,7 +338,7 @@ class ToolDecorator:
                 if cache_key in cache:
                     cached_result, timestamp = cache[cache_key]
                     if current_time - timestamp < expire_seconds:
-                        logger.debug(f"使用缓存结果: {self.definition.name}")
+                        print(f"使用缓存结果: {self.definition.name}")
                         return cached_result
 
                 # 执行并缓存
@@ -308,21 +357,31 @@ class ToolDecorator:
 
     @staticmethod
     def retry(max_attempts: int = 3, delay: float = 1.0):
-        """重试装饰器"""
+        """重试装饰器 - 支持任意方法签名"""
         def decorator(func):
-            async def wrapper(self, parameters: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
                 last_exception = None
 
                 for attempt in range(max_attempts):
                     try:
-                        return await func(self, parameters, context)
+                        if asyncio.iscoroutinefunction(func):
+                            return await func(*args, **kwargs)
+                        else:
+                            return func(*args, **kwargs)
                     except Exception as e:
                         last_exception = e
                         if attempt < max_attempts - 1:
-                            logger.warning(f"工具 {self.definition.name} 第{attempt + 1}次执行失败，{delay}秒后重试: {e}")
+                            if hasattr(args[0], 'definition'):
+                                print(f"工具 {args[0].definition.name}.{func.__name__} 第{attempt + 1}次执行失败，{delay}秒后重试: {e}")
+                            else:
+                                print(f"方法 {func.__name__} 第{attempt + 1}次执行失败，{delay}秒后重试: {e}")
                             await asyncio.sleep(delay)
                         else:
-                            logger.error(f"工具 {self.definition.name} 重试{max_attempts}次后仍然失败: {e}")
+                            if hasattr(args[0], 'definition'):
+                                print(f"工具 {args[0].definition.name}.{func.__name__} 重试{max_attempts}次后仍然失败: {e}")
+                            else:
+                                print(f"方法 {func.__name__} 重试{max_attempts}次后仍然失败: {e}")
 
                 raise last_exception
 
@@ -331,11 +390,12 @@ class ToolDecorator:
 
     @staticmethod
     def rate_limit(calls_per_minute: int = 60):
-        """速率限制装饰器"""
+        """速率限制装饰器 - 支持任意方法签名"""
         call_times = []
 
         def decorator(func):
-            async def wrapper(self, parameters: Dict[str, Any], context: Optional[Dict[str, Any]] = None):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
                 current_time = time.time()
 
                 # 清理过期的调用记录
@@ -343,15 +403,105 @@ class ToolDecorator:
 
                 # 检查速率限制
                 if len(call_times) >= calls_per_minute:
-                    raise Exception(f"工具 {self.definition.name} 超出速率限制: {calls_per_minute}次/分钟")
+                    if hasattr(args[0], 'definition'):
+                        raise Exception(f"工具 {args[0].definition.name}.{func.__name__} 超出速率限制: {calls_per_minute}次/分钟")
+                    else:
+                        raise Exception(f"方法 {func.__name__} 超出速率限制: {calls_per_minute}次/分钟")
 
                 call_times.append(current_time)
-                return await func(self, parameters, context)
+
+                if asyncio.iscoroutinefunction(func):
+                    return await func(*args, **kwargs)
+                else:
+                    return func(*args, **kwargs)
 
             return wrapper
         return decorator
 
 
+# 简单的方法级缓存装饰器
+def method_cache(expire_seconds: int = 300):
+    """方法级缓存装饰器 - 更简单的使用方式"""
+
+    def decorator(func):
+        cache = {}
+
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # 生成缓存键
+            cache_data = {
+                'args': args[1:],  # 跳过 self
+                'kwargs': kwargs
+            }
+            cache_str = json.dumps(cache_data, sort_keys=True, default=str)
+            cache_key = hashlib.md5(cache_str.encode()).hexdigest()
+
+            current_time = time.time()
+
+            # 检查缓存
+            if cache_key in cache:
+                result, timestamp = cache[cache_key]
+                if current_time - timestamp < expire_seconds:
+                    return result
+
+            # 执行方法
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
+
+            # 缓存结果
+            cache[cache_key] = (result, current_time)
+
+            # 清理过期缓存
+            expired_keys = [k for k, (_, ts) in cache.items() if
+                            current_time - ts >= expire_seconds]
+            for k in expired_keys:
+                del cache[k]
+
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+# 使用示例
+class ExampleTool(AsyncTool):
+    """示例工具，展示装饰器的正确用法"""
+
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="example_tool",
+            description="示例工具"
+        )
+
+    # 对于tool的execute方法，使用专门的装饰器
+    @ToolDecorator.cached_for_tool_execute(expire_seconds=300)
+    async def execute(self, parameters: Dict[str, Any],
+                      context: Optional[Dict[str, Any]] = None) -> Any:
+        return await self.do_work(parameters)
+
+    # 对于普通方法，使用通用的缓存装饰器或简单的方法缓存
+    @method_cache(expire_seconds=600)
+    async def do_work(self, parameters: Dict[str, Any]) -> str:
+        """执行实际工作"""
+        # 模拟耗时操作
+        await asyncio.sleep(1)
+        return f"工作完成: {parameters}"
+
+    # 使用重试装饰器
+    @ToolDecorator.retry(max_attempts=3, delay=1.0)
+    async def unreliable_operation(self, data: str) -> str:
+        """可能失败的操作"""
+        import random
+        if random.random() < 0.5:
+            raise Exception("随机失败")
+        return f"成功处理: {data}"
 # 工具构建器
 class ToolBuilder:
     """工具构建器"""

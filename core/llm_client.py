@@ -114,7 +114,7 @@ class LLMClient:
         response_time = end_time - start_time
 
         choice = response.choices[0]
-
+        self.retry_count  = 0
         return LLMResponse(
             content=choice.message.content or "",
             usage=response.usage.model_dump() if response.usage else {},

@@ -217,7 +217,7 @@ class WorldGenerator:
     async def _parse_detail_response(self, response: str, area: str) -> Dict[str, Any]:
         """解析详细信息响应"""
         # 根据不同区域将详细信息映射到正确的字段
-        logger.info(f">>解析详细信息响应_parse_detail_response:{response[:100]}")
+        logger.info(f">>解析详细信息响应_parse_detail_response:{response[:500]}")
         if area == "politics":
             return {"detailed_politics": response}
         elif area == "economy":

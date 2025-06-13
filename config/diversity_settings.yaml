@@ -1,0 +1,193 @@
+# config/diversity_settings.yaml
+# 多样性增强配置文件
+
+# 多样性增强总开关
+diversity_enhancement:
+  enabled: true
+  auto_enable_threshold: 0.5  # 当多样性得分低于此值时自动启用增强模式
+
+# 历史记录设置
+history_tracking:
+  max_records: 100  # 最大历史记录数
+  analysis_window: 10  # 分析窗口大小
+  avoidance_window: 5   # 避免重复的窗口大小
+
+# 随机化设置
+randomization:
+  default_level: 0.7      # 默认随机化程度
+  conservative_level: 0.3  # 保守模式
+  balanced_level: 0.6     # 平衡模式
+  aggressive_level: 0.9   # 激进模式
+
+  # 自适应调整
+  adaptive_adjustment:
+    enabled: true
+    min_diversity_score: 0.6
+    adjustment_step: 0.1
+
+# 故事结构权重配置
+story_structures:
+  # 结构名称: [权重, 最小间隔(生成次数)]
+  英雄之旅: [1.0, 3]
+  多线并行: [1.2, 2]  # 权重高=更容易被选中
+  时间循环: [1.5, 4]  # 间隔大=避免频繁使用
+  双重身份: [1.3, 3]
+  逆转重构: [1.4, 5]
+  螺旋上升: [1.0, 2]
+
+# 角色原型权重配置
+character_archetypes:
+  不羁浪子: [1.0, 2]
+  天才少年: [0.8, 3]  # 权重低=减少使用频率
+  复仇使者: [1.2, 4]
+  迷茫探索者: [1.1, 2]
+  隐世高人: [1.3, 5]
+  堕落天才: [1.4, 6]
+
+# 世界风味权重配置
+world_flavors:
+  古典仙侠: [0.7, 2]  # 降低传统风格的使用频率
+  现代都市: [1.2, 3]
+  蒸汽朋克: [1.5, 4]
+  末世废土: [1.3, 5]
+  奇幻大陆: [1.1, 3]
+
+# 创新因子配置
+innovation_factors:
+  # 叙述技法
+  narrative_techniques:
+    enabled: true
+    min_count: 1
+    max_count: 2
+    weights:
+      非线性叙述: 1.5
+      多重视角: 1.3
+      元叙事: 1.8
+      意识流: 1.2
+      寓言化: 1.4
+
+  # 角色创新
+  character_innovations:
+    enabled: true
+    min_count: 2
+    max_count: 4
+    categories:
+      身份设定: 1.2
+      能力体系: 1.4
+      成长轨迹: 1.1
+      关系动态: 1.3
+
+  # 世界创新
+  world_innovations:
+    enabled: true
+    min_count: 1
+    max_count: 3
+
+# 约束规则
+constraints:
+  # 强制避免规则
+  mandatory_avoidance:
+    same_structure_interval: 5     # 相同结构的最小间隔
+    same_archetype_interval: 3     # 相同原型的最小间隔
+    same_flavor_interval: 4        # 相同风味的最小间隔
+
+  # 软性避让规则
+  soft_avoidance:
+    similar_themes_weight: 0.7     # 相似主题的权重降低
+    recent_elements_penalty: 0.5   # 近期元素的惩罚系数
+
+# 质量控制
+quality_control:
+  max_innovation_factors: 6      # 最大创新因子数量
+  coherence_threshold: 0.7       # 连贯性阈值
+  readability_threshold: 0.6     # 可读性阈值
+
+  # 创新程度限制
+  innovation_limits:
+    conservative: 3
+    balanced: 5
+    aggressive: 8
+
+# 用户偏好适配
+user_preferences:
+  # 根据用户反馈调整
+  feedback_adjustment:
+    enabled: true
+    novelty_weight: 0.3
+    engagement_weight: 0.4
+    originality_weight: 0.3
+
+  # 主题偏好
+  theme_preferences:
+    修仙:
+      preferred_structures: [螺旋上升, 英雄之旅]
+      preferred_archetypes: [不羁浪子, 隐世高人]
+      innovation_level: balanced
+
+    都市异能:
+      preferred_structures: [双重身份, 多线并行]
+      preferred_archetypes: [天才少年, 迷茫探索者]
+      innovation_level: aggressive
+
+# 监控和报告
+monitoring:
+  diversity_check_interval: 5    # 每生成5个故事检查一次多样性
+  auto_report: true             # 自动生成多样性报告
+  warning_threshold: 0.4        # 多样性警告阈值
+
+  # 报告内容
+  report_metrics:
+    - diversity_score
+    - element_frequency
+    - innovation_usage
+    - user_satisfaction
+
+# 缓存配置
+caching:
+  enabled: true
+  ttl: 3600  # 缓存生存时间(秒)
+  max_size: 1000  # 最大缓存条目数
+
+  # 缓存策略
+  cache_strategy:
+    variants: true      # 缓存变体生成结果
+    characters: true    # 缓存角色生成结果
+    outlines: false     # 不缓存大纲(每次都要新生成)
+
+# 性能优化
+performance:
+  batch_generation: true        # 批量生成模式
+  parallel_processing: true     # 并行处理
+  max_concurrent: 3            # 最大并发数
+
+  # 资源限制
+  resource_limits:
+    max_memory_mb: 512
+    max_generation_time: 300   # 最大生成时间(秒)
+
+# 实验性功能
+experimental:
+  enabled: false
+
+  # AI辅助创新
+  ai_assisted_innovation:
+    enabled: false
+    model: "gpt-4"
+    creativity_boost: 0.2
+
+  # 跨文化元素融合
+  cross_cultural_fusion:
+    enabled: false
+    fusion_probability: 0.3
+
+  # 动态难度调整
+  dynamic_difficulty:
+    enabled: false
+    adjustment_factor: 0.1
+
+# 调试设置
+debug:
+  enabled: false
+  log_level: INFO
+  trace_generation: false
+  save_intermediate_results: false

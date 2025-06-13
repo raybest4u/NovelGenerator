@@ -4,20 +4,21 @@ MCP服务器实现
 提供RESTful API接口和工具调用能力
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any, Union
 import asyncio
 import json
 import uuid
 from datetime import datetime
+from typing import Dict, List, Optional, Any
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from config.settings import get_settings
-from core.llm_client import get_llm_service, Message
-from core.base_tools import ToolRegistry, ToolCall, ToolResponse
+from core.base_tools import ToolRegistry, ToolCall
+from core.llm_client import get_llm_service
 
 
 class MCPRequest(BaseModel):
@@ -402,6 +403,8 @@ class MCPServer:
         """注册默认工具"""
         # 这里会注册各个模块的工具
         # 实际的工具实现在对应的模块中
+        # registry = get_tool_registry()
+        # registry.register(EnhancedStoryGeneratorTool())
         pass
 
     def run(self, host: str = None, port: int = None, debug: bool = None):

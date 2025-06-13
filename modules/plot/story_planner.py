@@ -1,10 +1,11 @@
-
-# modules/plot/story_planner.py
+# modules/plot/story_planner.py - 修复版本
 """
 故事规划器
 负责生成故事大纲和章节规划
 """
 
+import re
+import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -59,6 +60,13 @@ class Chapter:
     tension_level: int  # 紧张程度 1-10
     pacing: str  # 节奏：slow/medium/fast
     mood: str  # 氛围
+
+    # 新增详细信息
+    detailed_summary: str = ""  # 详细摘要
+    scenes: List[Dict[str, Any]] = None  # 场景信息
+    core_conflict: str = ""  # 核心冲突
+    character_development: Dict[str, str] = None  # 角色发展
+    foreshadowing: List[str] = None  # 伏笔
 
 
 @dataclass
@@ -127,9 +135,9 @@ class StoryPlanner:
             basic_info, structure, chapter_count
         )
 
-        # 生成章节规划
-        chapters = await self._generate_chapter_plan(
-            basic_info, plot_points, chapter_count
+        # 生成详细章节规划
+        chapters = await self._generate_detailed_chapter_plan(
+            basic_info, plot_points, chapter_count, characters, world_setting
         )
 
         # 生成子情节
@@ -172,25 +180,65 @@ class StoryPlanner:
     ) -> Dict[str, Any]:
         """生成基础故事信息"""
 
-        prompt = self.prompt_manager.get_prompt(
-            "plot",
-            "basic_story",
-            title=title,
-            genre=genre,
-            theme=theme or "成长",
-            characters=characters or [],
-            world_setting=world_setting or {}
-        )
+        # 获取角色名称
+        character_names = [char.get("name", "未知角色") for char in (characters or [])]
+        protagonist_name = character_names[0] if character_names else "主角"
+        antagonist_name = character_names[1] if len(character_names) > 1 else "反派"
 
-        response = await self.llm_service.generate_text(prompt)
+        # 获取世界信息
+        world_name = world_setting.get("name", "未知世界") if world_setting else "未知世界"
+        world_type = world_setting.get("type", "大陆") if world_setting else "大陆"
 
-        # 解析响应，返回结构化数据
+        prompt = f"""
+        为小说《{title}》创建基础故事信息：
+
+        基本设定：
+        - 类型：{genre}
+        - 主题：{theme or "成长"}
+        - 世界：{world_name}（{world_type}）
+        - 主角：{protagonist_name}
+        - 反派：{antagonist_name}
+
+        世界背景：{world_setting.get('culture_notes', '') if world_setting else ''}
+        角色信息：{json.dumps(characters, ensure_ascii=False) if characters else '[]'}
+
+        请生成以JSON格式返回以下信息：
+        {{
+            "premise": "故事前提（一句话概括故事核心）",
+            "theme": "主要主题",
+            "tone": "故事基调",
+            "protagonist": "主角名称",
+            "antagonist": "反派名称",
+            "central_conflict": "核心冲突描述",
+            "stakes": "故事赌注（失败的后果）",
+            "beginning": "开端概述",
+            "middle": "发展概述",
+            "climax": "高潮概述",
+            "resolution": "结局概述",
+            "themes": ["主题1", "主题2", "主题3"],
+            "symbols": ["象征1", "象征2"],
+            "motifs": ["意象1", "意象2"]
+        }}
+        """
+
+        response = await self.llm_service.generate_text(prompt, temperature=0.7)
+
+        try:
+            # 提取JSON部分
+            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
+            if json_match:
+                parsed_info = json.loads(json_match.group())
+                return parsed_info
+        except:
+            pass
+
+        # 如果解析失败，返回默认值
         return {
             "theme": theme or "成长与冒险",
-            "premise": f"在{genre}世界中，主角展开冒险旅程",
+            "premise": f"在{world_name}中，{protagonist_name}展开冒险旅程",
             "tone": "冒险刺激",
-            "protagonist": "主角",
-            "antagonist": "反派",
+            "protagonist": protagonist_name,
+            "antagonist": antagonist_name,
             "central_conflict": "正义与邪恶的对抗",
             "stakes": "世界的命运",
             "beginning": "平凡世界被打破",
@@ -229,57 +277,57 @@ class StoryPlanner:
             PlotPoint(
                 id="opening",
                 name="开场",
-                description="介绍主角和日常世界",
+                description=f"介绍{basic_info['protagonist']}和日常世界",
                 chapter_range=f"1-2",
                 importance=8,
                 plot_function="世界构建",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=[],
-                outcomes=["建立背景"]
+                outcomes=["建立背景", "角色介绍"]
             ),
             PlotPoint(
                 id="inciting_incident",
                 name="启动事件",
-                description="打破日常，开始冒险",
+                description=f"打破{basic_info['protagonist']}的日常，开始冒险",
                 chapter_range=f"3-{act1_end}",
                 importance=9,
                 plot_function="情节启动",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=["初始冲突"],
-                outcomes=["踏上旅程"]
+                outcomes=["踏上旅程", "离开舒适区"]
             ),
             PlotPoint(
                 id="midpoint",
-                name="中点",
-                description="重大转折或启示",
+                name="中点转折",
+                description="重大转折或启示，改变故事方向",
                 chapter_range=f"{act2_mid}",
                 importance=8,
                 plot_function="转折点",
-                characters_involved=["主角", "导师"],
+                characters_involved=[basic_info['protagonist'], "导师"],
                 conflicts=["认知冲突"],
-                outcomes=["角色成长"]
+                outcomes=["角色成长", "真相揭示"]
             ),
             PlotPoint(
                 id="climax",
-                name="高潮",
-                description="最终对决",
+                name="最终对决",
+                description=f"{basic_info['protagonist']}与{basic_info['antagonist']}的最终对决",
                 chapter_range=f"{act3_start}-{chapter_count - 1}",
                 importance=10,
                 plot_function="最终冲突",
-                characters_involved=["主角", "反派"],
-                conflicts=["核心冲突"],
-                outcomes=["决定结局"]
+                characters_involved=[basic_info['protagonist'], basic_info['antagonist']],
+                conflicts=[basic_info['central_conflict']],
+                outcomes=["决定结局", "解决冲突"]
             ),
             PlotPoint(
                 id="resolution",
                 name="结局",
-                description="新的平衡",
+                description="新的平衡，故事收尾",
                 chapter_range=f"{chapter_count}",
                 importance=7,
                 plot_function="收尾",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=[],
-                outcomes=["故事完结"]
+                outcomes=["故事完结", "新的开始"]
             )
         ]
 
@@ -287,20 +335,17 @@ class StoryPlanner:
         PlotPoint]:
         """生成英雄之旅情节点"""
 
-        # 简化版英雄之旅结构
-        points_per_stage = max(1, chapter_count // 12)
-
         return [
             PlotPoint(
                 id="ordinary_world",
                 name="日常世界",
-                description="主角的平凡生活",
+                description=f"{basic_info['protagonist']}的平凡生活",
                 chapter_range="1-2",
                 importance=6,
                 plot_function="建立基线",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=[],
-                outcomes=["背景设定"]
+                outcomes=["背景设定", "角色建立"]
             ),
             PlotPoint(
                 id="call_to_adventure",
@@ -309,20 +354,20 @@ class StoryPlanner:
                 chapter_range="3-4",
                 importance=8,
                 plot_function="情节触发",
-                characters_involved=["主角", "信使"],
+                characters_involved=[basic_info['protagonist'], "信使"],
                 conflicts=["选择冲突"],
-                outcomes=["接受使命"]
+                outcomes=["接受使命", "开始旅程"]
             ),
             PlotPoint(
                 id="mentor",
                 name="导师出现",
-                description="遇到指导者",
+                description="遇到指导者，获得帮助",
                 chapter_range="5-6",
                 importance=7,
                 plot_function="能力获得",
-                characters_involved=["主角", "导师"],
+                characters_involved=[basic_info['protagonist'], "导师"],
                 conflicts=[],
-                outcomes=["获得帮助"]
+                outcomes=["获得帮助", "能力提升"]
             ),
             PlotPoint(
                 id="threshold",
@@ -331,20 +376,20 @@ class StoryPlanner:
                 chapter_range=f"7-{chapter_count // 3}",
                 importance=8,
                 plot_function="世界转换",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=["适应冲突"],
-                outcomes=["进入新世界"]
+                outcomes=["进入新世界", "面临挑战"]
             ),
             PlotPoint(
                 id="trials",
                 name="试炼考验",
-                description="面临各种挑战",
+                description="面临各种挑战和考验",
                 chapter_range=f"{chapter_count // 3 + 1}-{chapter_count * 2 // 3}",
                 importance=9,
                 plot_function="角色锻炼",
-                characters_involved=["主角", "盟友", "敌人"],
-                conflicts=["成长冲突"],
-                outcomes=["获得成长"]
+                characters_involved=[basic_info['protagonist'], "盟友", "敌人"],
+                conflicts=["成长冲突", "外部威胁"],
+                outcomes=["获得成长", "结交盟友"]
             ),
             PlotPoint(
                 id="ordeal",
@@ -353,20 +398,20 @@ class StoryPlanner:
                 chapter_range=f"{chapter_count * 2 // 3 + 1}-{chapter_count - 2}",
                 importance=10,
                 plot_function="最终考验",
-                characters_involved=["主角", "反派"],
-                conflicts=["生死冲突"],
-                outcomes=["获得宝物"]
+                characters_involved=[basic_info['protagonist'], basic_info['antagonist']],
+                conflicts=[basic_info['central_conflict']],
+                outcomes=["获得宝物", "战胜恐惧"]
             ),
             PlotPoint(
                 id="return",
-                name="归来",
+                name="英雄归来",
                 description="带着收获回到日常世界",
                 chapter_range=f"{chapter_count - 1}-{chapter_count}",
                 importance=7,
                 plot_function="收尾整合",
-                characters_involved=["主角"],
+                characters_involved=[basic_info['protagonist']],
                 conflicts=[],
-                outcomes=["新的开始"]
+                outcomes=["新的开始", "智慧分享"]
             )
         ]
 
@@ -375,45 +420,160 @@ class StoryPlanner:
         """生成默认情节点"""
         return await self._generate_three_act_points(basic_info, chapter_count)
 
-    async def _generate_chapter_plan(
+    async def _generate_detailed_chapter_plan(
         self,
         basic_info: Dict,
         plot_points: List[PlotPoint],
-        chapter_count: int
+        chapter_count: int,
+        characters: List[Dict] = None,
+        world_setting: Dict = None
     ) -> List[Chapter]:
-        """生成章节规划"""
+        """生成详细章节规划"""
 
-        chapters = []
+        # 使用LLM生成详细的章节规划
+        prompt = f"""
+        基于故事信息和情节点，为{chapter_count}章小说生成详细的章节规划：
 
-        for i in range(1, chapter_count + 1):
-            # 确定当前章节涉及的情节点
-            relevant_points = [
-                point for point in plot_points
-                if self._is_chapter_in_range(i, point.chapter_range)
-            ]
+        故事信息：
+        - 标题：{basic_info.get('premise', '')}
+        - 主角：{basic_info.get('protagonist', '')}
+        - 反派：{basic_info.get('antagonist', '')}
+        - 核心冲突：{basic_info.get('central_conflict', '')}
 
-            # 计算紧张程度（开头低，中间高，结尾递减）
-            tension = self._calculate_tension_level(i, chapter_count)
+        情节点：
+        {json.dumps([{"name": p.name, "description": p.description, "chapter_range": p.chapter_range} for p in plot_points], ensure_ascii=False, indent=2)}
 
-            # 确定节奏
-            pacing = self._determine_pacing(i, chapter_count, relevant_points)
+        角色信息：
+        {json.dumps([{"name": char.get("name", ""), "role": char.get("character_type", "")} for char in (characters or [])], ensure_ascii=False, indent=2)}
 
-            chapter = Chapter(
-                number=i,
-                title=f"第{i}章",
-                summary=f"第{i}章的主要内容",
-                word_count_target=3000,
-                key_events=[point.name for point in relevant_points],
-                character_focus=["主角"],
-                plot_advancement=f"推进{relevant_points[0].plot_function if relevant_points else '故事发展'}",
-                tension_level=tension,
-                pacing=pacing,
-                mood=self._determine_mood(relevant_points, tension)
-            )
+        请为每一章生成详细信息，返回JSON格式：
+        [
+            {{
+                "number": 1,
+                "title": "章节标题",
+                "summary": "章节摘要（50字左右）",
+                "detailed_summary": "详细摘要（100字左右）",
+                "key_events": ["事件1", "事件2"],
+                "character_focus": ["主要角色1", "主要角色2"],
+                "plot_advancement": "本章如何推进情节",
+                "tension_level": 5,
+                "mood": "情绪氛围",
+                "pacing": "节奏快慢",
+                "core_conflict": "本章核心冲突",
+                "scenes": [
+                    {{
+                        "location": "场景地点",
+                        "characters": ["参与角色"],
+                        "events": ["场景事件"],
+                        "purpose": "场景目的",
+                        "mood": "场景氛围"
+                    }}
+                ]
+            }}
+        ]
 
-            chapters.append(chapter)
+        要求：
+        1. 每章都要有明确的目标和进展
+        2. 章节之间要有逻辑连贯性
+        3. 适当分配角色戏份
+        4. 控制节奏起伏
+        5. 确保情节点在相应章节体现
+        """
+
+        response = await self.llm_service.generate_text(prompt, temperature=0.7, max_tokens=8000)
+
+        # 解析响应
+        chapters = self._parse_chapters_from_llm(response.content, chapter_count, plot_points)
 
         return chapters
+
+    def _parse_chapters_from_llm(self, response: str, chapter_count: int,
+                                 plot_points: List[PlotPoint]) -> List[Chapter]:
+        """从LLM响应解析章节信息"""
+        try:
+            # 尝试提取JSON
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                chapters_data = json.loads(json_match.group())
+
+                chapters = []
+                for i, chapter_data in enumerate(chapters_data):
+                    if i >= chapter_count:
+                        break
+
+                    chapter = Chapter(
+                        number=chapter_data.get("number", i + 1),
+                        title=chapter_data.get("title", f"第{i + 1}章"),
+                        summary=chapter_data.get("summary", f"第{i + 1}章的内容"),
+                        word_count_target=3000,
+                        key_events=chapter_data.get("key_events", []),
+                        character_focus=chapter_data.get("character_focus", ["主角"]),
+                        plot_advancement=chapter_data.get("plot_advancement", "推进故事发展"),
+                        tension_level=chapter_data.get("tension_level", 5),
+                        pacing=chapter_data.get("pacing", "medium"),
+                        mood=chapter_data.get("mood", "中性"),
+                        detailed_summary=chapter_data.get("detailed_summary",
+                                                          chapter_data.get("summary", "")),
+                        scenes=chapter_data.get("scenes", []),
+                        core_conflict=chapter_data.get("core_conflict", ""),
+                        character_development=chapter_data.get("character_development", {}),
+                        foreshadowing=chapter_data.get("foreshadowing", [])
+                    )
+                    chapters.append(chapter)
+
+                # 确保章节数量足够
+                while len(chapters) < chapter_count:
+                    chapters.append(self._create_default_chapter(len(chapters) + 1, plot_points))
+
+                return chapters[:chapter_count]
+        except Exception as e:
+            print(f"解析章节失败: {e}")
+
+        # 如果解析失败，生成默认章节
+        return [self._create_default_chapter(i + 1, plot_points) for i in range(chapter_count)]
+
+    def _create_default_chapter(self, chapter_number: int, plot_points: List[PlotPoint]) -> Chapter:
+        """创建默认章节"""
+
+        # 找到对应的情节点
+        relevant_points = [
+            point for point in plot_points
+            if self._is_chapter_in_range(chapter_number, point.chapter_range)
+        ]
+
+        if relevant_points:
+            main_point = relevant_points[0]
+            title = f"第{chapter_number}章 {main_point.name}"
+            summary = main_point.description
+            key_events = main_point.outcomes
+            character_focus = main_point.characters_involved
+            plot_advancement = main_point.plot_function
+            tension_level = main_point.importance
+        else:
+            title = f"第{chapter_number}章"
+            summary = f"第{chapter_number}章的主要内容"
+            key_events = [f"第{chapter_number}章的重要事件"]
+            character_focus = ["主角"]
+            plot_advancement = "推进故事发展"
+            tension_level = self._calculate_tension_level(chapter_number, 20)
+
+        return Chapter(
+            number=chapter_number,
+            title=title,
+            summary=summary,
+            word_count_target=3000,
+            key_events=key_events,
+            character_focus=character_focus,
+            plot_advancement=plot_advancement,
+            tension_level=tension_level,
+            pacing=self._determine_pacing(chapter_number, 20, relevant_points),
+            mood=self._determine_mood(relevant_points, tension_level),
+            detailed_summary=summary,
+            scenes=[],
+            core_conflict="",
+            character_development={},
+            foreshadowing=[]
+        )
 
     def _is_chapter_in_range(self, chapter: int, range_str: str) -> bool:
         """判断章节是否在范围内"""
@@ -468,14 +628,14 @@ class StoryPlanner:
         subplots = [
             {
                 "name": "成长线",
-                "description": "主角的个人成长历程",
-                "characters": "主角",
+                "description": f"{basic_info['protagonist']}的个人成长历程",
+                "characters": basic_info['protagonist'],
                 "importance": "高"
             },
             {
                 "name": "友谊线",
                 "description": "与伙伴的友谊发展",
-                "characters": "主角+伙伴",
+                "characters": f"{basic_info['protagonist']}+伙伴",
                 "importance": "中"
             }
         ]
@@ -484,7 +644,7 @@ class StoryPlanner:
             subplots.append({
                 "name": "爱情线",
                 "description": "浪漫关系的发展",
-                "characters": "主角+爱情对象",
+                "characters": f"{basic_info['protagonist']}+爱情对象",
                 "importance": "中"
             })
 
@@ -590,4 +750,3 @@ class StoryPlannerTool(AsyncTool):
                 "structure": structure
             }
         }
-

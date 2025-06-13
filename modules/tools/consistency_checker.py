@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, asdict
 from core.base_tools import AsyncTool, ToolDefinition, ToolParameter
 from core.llm_client import get_llm_service
+from modules.generation.enhanced_story_generator import EnhancedStoryGeneratorTool
 from modules.tools import NameGeneratorTool, TimelineManagerTool
 
 
@@ -576,7 +577,7 @@ def register_tools():
     registry.register(NameGeneratorTool())
     registry.register(TimelineManagerTool())
     registry.register(ConsistencyCheckerTool())
-
+    registry.register(EnhancedStoryGeneratorTool())
 
 if __name__ == "__main__":
     register_tools()
