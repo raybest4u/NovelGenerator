@@ -211,17 +211,13 @@ class EnhancedStoryGenerator:
                 base_theme = random.choice(self.enhanced_config.preferred_themes)
                 logger.info(f"根据配置偏好调整主题为: {base_theme}")
 
-        # 生成多样性变体（考虑配置偏好）
-        variant = await self.diversity_enhancer.generate_story_variant(
-            base_theme,
-            randomization_level,
-            constraints={
-                "preferred_structures": self.enhanced_config.preferred_story_structures,
-                "preferred_archetypes": self.enhanced_config.preferred_character_archetypes,
-                "preferred_flavors": self.enhanced_config.preferred_world_flavors,
-                "avoid_recent": avoid_recent
-            }
-        )
+        # 获取避免约束
+        constraints = None
+        if avoid_recent:
+            constraints = self.diversity_enhancer.get_avoidance_constraints(recent_count=5)
+
+        # 生成多样性变体（使用正确的方法名）
+        variant = await self.diversity_enhancer.generate_diverse_variant(base_theme, constraints)
 
         # 选择创新因子（考虑配置）
         available_factors = self.enhanced_config.default_innovation_factors.copy()

@@ -102,7 +102,7 @@ class NovelGenerator:
 🔧 可用工具类别:
 """)
         for category in self.tool_registry.categories:
-            tools = self.tool_registry.list_tools_by_category(category)
+            tools = self.tool_registry.list_tools(category,True)
             print(f"  {category}: {len(tools)} 个工具")
 
     def _show_stats(self):
