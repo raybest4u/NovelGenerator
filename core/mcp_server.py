@@ -17,8 +17,9 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
-from core.base_tools import ToolRegistry, ToolCall
+from core.base_tools import  ToolCall
 from core.llm_client import get_llm_service
+from core.tool_registry import ToolRegistry
 
 
 class MCPRequest(BaseModel):

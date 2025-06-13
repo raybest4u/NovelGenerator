@@ -8,7 +8,10 @@ import re
 import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict
+
+from core.abstract_tools import ContentGeneratorTool
 from core.base_tools import AsyncTool, ToolDefinition, ToolParameter
+from core.cache_manager import cached
 from core.llm_client import get_llm_service
 from config.settings import get_prompt_manager
 import asyncio
@@ -590,86 +593,33 @@ class ChapterWriter:
         }
 
 
-class ChapterWriterTool(AsyncTool):
+class ChapterWriterTool(ContentGeneratorTool):
     """章节写作工具"""
 
     def __init__(self):
         super().__init__()
-        self.writer = ChapterWriter()
+        self.llm_service = get_llm_service()
+        self.prompt_manager = get_prompt_manager()
 
     @property
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="chapter_writer",
-            description="写作完整的小说章节，包括场景规划、内容生成、质量控制",
+            description="生成章节内容",
             category="writing",
-            parameters=[
+            parameters=self.common_parameters + [
                 ToolParameter(
                     name="chapter_info",
                     type="object",
-                    description="章节信息（编号、标题、摘要等）",
+                    description="章节信息",
                     required=True
-                ),
-                ToolParameter(
-                    name="story_context",
-                    type="object",
-                    description="故事上下文（角色、世界观、前情等）",
-                    required=True
-                ),
-                ToolParameter(
-                    name="writing_style",
-                    type="string",
-                    description="写作风格：traditional/modern/poetic/action",
-                    required=False,
-                    default="traditional"
-                ),
-                ToolParameter(
-                    name="target_word_count",
-                    type="integer",
-                    description="目标字数",
-                    required=False,
-                    default=3000
                 )
-            ],
-            examples=[
-                {
-                    "parameters": {
-                        "chapter_info": {
-                            "number": 1,
-                            "title": "初入江湖",
-                            "summary": "主角离开家乡，开始修仙之路"
-                        },
-                        "story_context": {
-                            "protagonist": "林风",
-                            "world": "修仙大陆"
-                        },
-                        "writing_style": "traditional",
-                        "target_word_count": 3000
-                    },
-                    "result": "完整的章节内容"
-                }
-            ],
-            tags=["writing", "chapter", "content"]
+            ]
         )
 
-    async def execute(self, parameters: Dict[str, Any],
-                      context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """执行章节写作"""
+    @cached("chapter_writer", expire_seconds=1800)  # 使用统一缓存
+    async def generate_content(self, content_type: str, context: Dict[str, Any], style: str) -> Any:
+        """生成章节内容"""
+        # 实现章节生成逻辑
 
-        chapter_info = parameters.get("chapter_info", {})
-        story_context = parameters.get("story_context", {})
-        writing_style = parameters.get("writing_style", "traditional")
-        target_word_count = parameters.get("target_word_count", 3000)
-
-        chapter_content = await self.writer.write_chapter(
-            chapter_info, story_context, writing_style, target_word_count
-        )
-
-        return {
-            "chapter": asdict(chapter_content),
-            "generation_info": {
-                "writing_style": writing_style,
-                "target_word_count": target_word_count,
-                "actual_word_count": chapter_content.total_word_count
-            }
-        }
+        pass
